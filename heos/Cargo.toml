@@ -1,0 +1,27 @@
+[package]
+name = "heos"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Rust bindings for HEOS ecosystem API"
+repository.workspace = true
+keywords = ["heos", "async"]
+categories = ["api-bindings"]
+readme = "../README.md"
+
+[dependencies]
+ahash = { workspace = true }
+educe = { workspace = true }
+parking_lot = { workspace = true }
+qstring = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_qs = { workspace = true }
+ssdp-client = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
