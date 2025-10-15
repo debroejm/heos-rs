@@ -49,6 +49,14 @@ impl GroupData {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct GroupSnapshot {
+    pub info: GroupInfo,
+    pub leader_id: PlayerId,
+    pub volume: Volume,
+    pub mute: MuteState,
+}
+
 pub struct Group<'a> {
     channel: &'a AsyncMutex<Channel>,
     data: AsyncRwLockReadGuard<'a, GroupData>,
@@ -151,5 +159,14 @@ impl<'a> Group<'a> {
             MuteState::Off => MuteState::On,
         };
         Ok(())
+    }
+
+    pub async fn snapshot(&self) -> GroupSnapshot {
+        GroupSnapshot {
+            info: self.data.info.clone(),
+            leader_id: self.data.leader_id,
+            volume: self.data.volume.read().await.clone(),
+            mute: self.data.mute.read().await.clone(),
+        }
     }
 }

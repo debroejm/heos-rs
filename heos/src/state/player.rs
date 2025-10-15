@@ -25,7 +25,6 @@ pub struct NowPlaying {
 #[derive(Debug)]
 pub(super) struct PlayerData {
     pub info: PlayerInfo,
-    // TODO: separate into individual locks
     pub now_playing: AsyncRwLock<NowPlaying>,
     pub queue: AsyncRwLock<Vec<SongInfo>>,
     pub play_state: AsyncRwLock<PlayState>,
@@ -79,6 +78,18 @@ impl PlayerData {
             shuffle: AsyncRwLock::new(play_mode.shuffle),
         })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct PlayerSnapshot {
+    pub info: PlayerInfo,
+    pub now_playing: NowPlaying,
+    pub queue: Vec<SongInfo>,
+    pub play_state: PlayState,
+    pub volume: Volume,
+    pub mute: MuteState,
+    pub repeat: RepeatMode,
+    pub shuffle: ShuffleMode,
 }
 
 pub struct Player<'a> {
@@ -323,6 +334,19 @@ impl<'a> Player<'a> {
                 media_id: media_id.into(),
                 add_to_queue_type,
             }).await
+    }
+
+    pub async fn snapshot(&self) -> PlayerSnapshot {
+        PlayerSnapshot {
+            info: self.data.info.clone(),
+            now_playing: self.data.now_playing.read().await.clone(),
+            queue: self.data.queue.read().await.clone(),
+            play_state: self.data.play_state.read().await.clone(),
+            volume: self.data.volume.read().await.clone(),
+            mute: self.data.mute.read().await.clone(),
+            repeat: self.data.repeat.read().await.clone(),
+            shuffle: self.data.shuffle.read().await.clone(),
+        }
     }
 }
 

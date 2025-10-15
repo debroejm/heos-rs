@@ -16,7 +16,7 @@ pub enum GroupRole {
 }
 impl_enum_string_conversions!(GroupRole);
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct GroupPlayer {
     pub name: String,
     #[serde(rename = "pid")]
@@ -24,7 +24,7 @@ pub struct GroupPlayer {
     pub role: GroupRole,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct GroupInfo {
     pub name: String,
     #[serde(rename = "gid")]
