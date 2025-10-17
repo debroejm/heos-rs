@@ -1,14 +1,15 @@
-use std::hash::Hash;
-use ahash::HashMap;
-use std::time::Duration;
+use ahash::{HashMap, HashSet};
 use educe::Educe;
-use tracing::error;
+use std::hash::Hash;
+use std::time::Duration;
 use tokio::sync::{
     Mutex as AsyncMutex,
     RwLock as AsyncRwLock,
     RwLockReadGuard as AsyncRwLockReadGuard,
 };
+use tracing::error;
 
+use crate::channel::Channel;
 use crate::command::browse::*;
 use crate::command::group::*;
 use crate::command::player::*;
@@ -19,12 +20,13 @@ use crate::data::group::GroupId;
 use crate::data::player::PlayerId;
 use crate::data::source::SourceId;
 use crate::data::system::AccountStatus;
-use crate::channel::Channel;
 use crate::state::group::*;
+use crate::state::playable::*;
 use crate::state::player::*;
 use crate::state::source::*;
 
 pub mod group;
+pub mod playable;
 pub mod player;
 pub mod source;
 
@@ -163,6 +165,22 @@ impl State {
         LockedDataIter::new(&self.channel, &self.groups).await
     }
 
+    pub async fn playable(&self, playable_id: impl Into<PlayableId>) -> Option<Playable<'_>> {
+        let playable_id = playable_id.into();
+        match playable_id {
+            PlayableId::Player(player_id) => self.player(&player_id).await.map(Into::into),
+            PlayableId::Group(group_id) => {
+                let group = self.group(&group_id).await?;
+                let player = self.player(&group.leader_id()).await?;
+                Some(Playable::from_group(group, player))
+            }
+        }
+    }
+
+    pub async fn playables(&self) -> PlayablesIter {
+        PlayablesIter::new(self).await
+    }
+
     pub(crate) async fn handle_event(&self, event: Event) -> Result<(), CommandError> {
         match event {
             Event::SourcesChanged => self.update_sources().await?,
@@ -259,6 +277,19 @@ impl<'a, K, V: FromLockedData<'a>> LockedDataIter<'a, K, V> {
             keys,
         }
     }
+
+    fn get(&self, key: &K) -> Option<V>
+    where
+        K: Hash + Eq,
+        V: 'a,
+    {
+        let guard = self.data.try_read()
+            .expect("RwLock should already be locked with a ReadGuard");
+        let data = AsyncRwLockReadGuard::try_map(guard, |data| data.get(key))
+            .ok()?;
+        let value = V::from_locked_data(self.channel, data);
+        Some(value)
+    }
 }
 
 impl<'a, K, V> Iterator for LockedDataIter<'a, K, V>
@@ -268,12 +299,62 @@ where
 {
     type Item = V;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let key = self.keys.pop()?;
-        let guard = self.data.try_read()
-            .expect("RwLock should already be locked with a ReadGuard");
-        let data = AsyncRwLockReadGuard::map(guard, |data| &data[&key]);
-        let value = V::from_locked_data(self.channel, data);
-        Some(value)
+        self.get(&key)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.keys.len();
+        (len, Some(len))
+    }
+}
+
+impl<'a, K, V> ExactSizeIterator for LockedDataIter<'a, K, V>
+where
+    K: Hash + Eq,
+    V: FromLockedData<'a> + 'a,
+{}
+
+pub struct PlayablesIter<'a> {
+    yielded_player_ids: HashSet<PlayerId>,
+    groups: LockedDataIter<'a, GroupId, Group<'a>>,
+    players: LockedDataIter<'a, PlayerId, Player<'a>>,
+}
+
+impl<'a> PlayablesIter<'a> {
+    async fn new(state: &'a State) -> Self {
+        Self {
+            yielded_player_ids: HashSet::default(),
+            groups: state.groups().await,
+            players: state.players().await,
+        }
+    }
+}
+
+impl<'a> Iterator for PlayablesIter<'a> {
+    type Item = Playable<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(group) = self.groups.next() {
+            let player = self.players.get(&group.leader_id())?;
+
+            for player in &group.info().players {
+                self.yielded_player_ids.insert(player.player_id);
+            }
+
+            return Some(Playable::from_group(group, player))
+        }
+
+        while let Some(player) = self.players.next() {
+            if !self.yielded_player_ids.contains(&player.info().player_id) {
+                self.yielded_player_ids.insert(player.info().player_id);
+                return Some(player.into())
+            }
+        }
+
+        None
     }
 }
