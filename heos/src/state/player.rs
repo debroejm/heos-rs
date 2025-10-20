@@ -136,15 +136,11 @@ impl<'a> Player<'a> {
     }
 
     pub async fn set_play_state(&self, state: PlayState) -> Result<(), CommandError> {
-        let mut play_state = self.data.play_state.write().await;
         self.channel.lock().await
             .send_command(SetPlayState {
                 player_id: self.data.info.player_id,
                 state,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local play_state value
-        *play_state = state;
-        Ok(())
+            }).await
     }
 
     pub async fn volume(&self) -> Volume {
@@ -152,39 +148,27 @@ impl<'a> Player<'a> {
     }
 
     pub async fn set_volume(&self, level: Volume) -> Result<(), CommandError> {
-        let mut volume = self.data.volume.write().await;
         self.channel.lock().await
             .send_command(SetVolume {
                 player_id: self.data.info.player_id,
                 level,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local volume value
-        *volume = level;
-        Ok(())
+            }).await
     }
 
     pub async fn volume_up(&self, step: Option<VolumeStep>) -> Result<(), CommandError> {
-        let mut volume = self.data.volume.write().await;
         self.channel.lock().await
             .send_command(VolumeUp {
                 player_id: self.data.info.player_id,
                 step,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local volume value
-        *volume = volume.saturating_add(step.unwrap_or_default());
-        Ok(())
+            }).await
     }
 
     pub async fn volume_down(&self, step: Option<VolumeStep>) -> Result<(), CommandError> {
-        let mut volume = self.data.volume.write().await;
         self.channel.lock().await
             .send_command(VolumeDown {
                 player_id: self.data.info.player_id,
                 step,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local volume value
-        *volume = volume.saturating_sub(step.unwrap_or_default());
-        Ok(())
+            }).await
     }
 
     pub async fn mute(&self) -> MuteState {
@@ -192,29 +176,18 @@ impl<'a> Player<'a> {
     }
 
     pub async fn set_mute(&self, state: MuteState) -> Result<(), CommandError> {
-        let mut mute = self.data.mute.write().await;
         self.channel.lock().await
             .send_command(SetMute {
                 player_id: self.data.info.player_id,
                 state,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local mute value
-        *mute = state;
-        Ok(())
+            }).await
     }
 
     pub async fn toggle_mute(&self) -> Result<(), CommandError> {
-        let mut mute = self.data.mute.write().await;
         self.channel.lock().await
             .send_command(ToggleMute {
                 player_id: self.data.info.player_id,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local mute value
-        *mute = match *mute {
-            MuteState::On => MuteState::Off,
-            MuteState::Off => MuteState::On,
-        };
-        Ok(())
+            }).await
     }
 
     pub async fn repeat(&self) -> RepeatMode {
@@ -230,28 +203,12 @@ impl<'a> Player<'a> {
         repeat: Option<RepeatMode>,
         shuffle: Option<ShuffleMode>,
     ) -> Result<(), CommandError> {
-        let repeat_lock = match repeat {
-            Some(_) => Some(self.data.repeat.write().await),
-            None => None,
-        };
-        let shuffle_lock = match shuffle {
-            Some(_) => Some(self.data.shuffle.write().await),
-            None => None,
-        };
         self.channel.lock().await
             .send_command(SetPlayMode {
                 player_id: self.data.info.player_id,
                 repeat,
                 shuffle,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local repeat/shuffle values
-        if let Some(repeat) = repeat {
-            *repeat_lock.unwrap() = repeat;
-        }
-        if let Some(shuffle) = shuffle {
-            *shuffle_lock.unwrap() = shuffle;
-        }
-        Ok(())
+            }).await
     }
 
     pub async fn play_next(&self) -> Result<(), CommandError> {
@@ -369,42 +326,35 @@ impl<'a> Queue<'a> {
     }
 
     pub async fn play(&mut self, idx: usize) -> Result<(), CommandError> {
-        let queue = self.queue.write().await;
+        let queue = self.queue.read().await;
         if let Some(song) = queue.get(idx) {
             self.player.channel.lock().await
                 .send_command(PlayQueueItem {
                     player_id: self.player.data.info.player_id,
                     queue_id: song.queue_id,
-                }).await?;
-            // TODO: How does this change the local queue?
-            Ok(())
+                }).await
         } else {
             Err(CommandError::ParamOutOfRange)
         }
     }
 
     pub async fn remove(&mut self, idx: usize) -> Result<(), CommandError> {
-        let mut queue = self.queue.write().await;
+        let queue = self.queue.read().await;
         if let Some(song) = queue.get(idx) {
             self.player.channel.lock().await
                 .send_command(RemoveFromQueue {
                     player_id: self.player.data.info.player_id,
                     queue_ids: vec![song.queue_id],
-                }).await?;
-            queue.remove(idx);
-            Ok(())
+                }).await
         } else {
             Err(CommandError::ParamOutOfRange)
         }
     }
 
     pub async fn clear(&mut self) -> Result<(), CommandError> {
-        let mut queue = self.queue.write().await;
         self.player.channel.lock().await
             .send_command(ClearQueue {
                 player_id: self.player.data.info.player_id,
-            }).await?;
-        queue.clear();
-        Ok(())
+            }).await
     }
 }

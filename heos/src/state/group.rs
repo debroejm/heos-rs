@@ -93,39 +93,27 @@ impl<'a> Group<'a> {
     }
 
     pub async fn set_volume(&self, level: Volume) -> Result<(), CommandError> {
-        let mut volume = self.data.volume.write().await;
         self.channel.lock().await
             .send_command(SetGroupVolume {
                 group_id: self.data.info.group_id,
                 level,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local volume value
-        *volume = level;
-        Ok(())
+            }).await
     }
 
     pub async fn volume_up(&self, step: Option<VolumeStep>) -> Result<(), CommandError> {
-        let mut volume = self.data.volume.write().await;
         self.channel.lock().await
             .send_command(GroupVolumeUp {
                 group_id: self.data.info.group_id,
                 step,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local volume value
-        *volume = volume.saturating_add(step.unwrap_or_default());
-        Ok(())
+            }).await
     }
 
     pub async fn volume_down(&self, step: Option<VolumeStep>) -> Result<(), CommandError> {
-        let mut volume = self.data.volume.write().await;
         self.channel.lock().await
             .send_command(GroupVolumeDown {
                 group_id: self.data.info.group_id,
                 step,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local volume value
-        *volume = volume.saturating_sub(step.unwrap_or_default());
-        Ok(())
+            }).await
     }
 
     pub async fn mute(&self) -> MuteState {
@@ -133,29 +121,18 @@ impl<'a> Group<'a> {
     }
 
     pub async fn set_mute(&self, state: MuteState) -> Result<(), CommandError> {
-        let mut mute = self.data.mute.write().await;
         self.channel.lock().await
             .send_command(SetGroupMute {
                 group_id: self.data.info.group_id,
                 state,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local mute value
-        *mute = state;
-        Ok(())
+            }).await
     }
 
     pub async fn toggle_mute(&self) -> Result<(), CommandError> {
-        let mut mute = self.data.mute.write().await;
         self.channel.lock().await
             .send_command(ToggleGroupMute {
                 group_id: self.data.info.group_id,
-            }).await?;
-        // Assuming the above completes successfully, pre-emptively update the local mute value
-        *mute = match *mute {
-            MuteState::On => MuteState::Off,
-            MuteState::Off => MuteState::On,
-        };
-        Ok(())
+            }).await
     }
 
     pub async fn snapshot(&self) -> GroupSnapshot {
