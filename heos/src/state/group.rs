@@ -10,7 +10,7 @@ use crate::data::common::*;
 use crate::data::group::*;
 use crate::data::player::PlayerId;
 use crate::channel::Channel;
-use crate::state::FromLockedData;
+use crate::state::{locked_data_iter, FromLockedData};
 
 #[derive(Debug)]
 pub(super) struct GroupData {
@@ -69,10 +69,7 @@ impl<'a> FromLockedData<'a> for Group<'a> {
     fn from_locked_data(
         channel: &'a AsyncMutex<Channel>,
         data: AsyncRwLockReadGuard<'a, Self::Data>,
-    ) -> Self
-    where
-        Self: 'a,
-    {
+    ) -> Self {
         Self {
             channel,
             data,
@@ -170,3 +167,5 @@ impl<'a> Group<'a> {
         }
     }
 }
+
+locked_data_iter!(GroupsIter, GroupId, GroupData, Group);

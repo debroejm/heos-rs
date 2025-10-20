@@ -1,15 +1,18 @@
+use ahash::HashSet;
+use educe::Educe;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
-use educe::Educe;
 use url::Url;
+
 use crate::command::CommandError;
 use crate::data::common::*;
 use crate::data::group::*;
 use crate::data::player::*;
 use crate::data::song::SongInfo;
 use crate::data::source::SourceId;
-use crate::state::group::Group;
-use crate::state::player::{NowPlaying, Player, Queue};
+use crate::state::group::{Group, GroupsIter};
+use crate::state::player::{NowPlaying, Player, PlayersIter, Queue};
+use crate::state::State;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlayableId {
@@ -210,5 +213,46 @@ impl<'a> Playable<'a> {
             repeat: self.repeat().await,
             shuffle: self.shuffle().await,
         }
+    }
+}
+
+pub struct PlayablesIter<'a> {
+    yielded_player_ids: HashSet<PlayerId>,
+    groups: GroupsIter<'a>,
+    players: PlayersIter<'a>,
+}
+
+impl<'a> PlayablesIter<'a> {
+    pub(super) async fn new(state: &'a State) -> Self {
+        Self {
+            yielded_player_ids: HashSet::default(),
+            groups: state.groups().await,
+            players: state.players().await,
+        }
+    }
+}
+
+impl<'a> Iterator for PlayablesIter<'a> {
+    type Item = Playable<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(group) = self.groups.next() {
+            let player = self.players.get(&group.leader_id())?;
+
+            for player in &group.info().players {
+                self.yielded_player_ids.insert(player.player_id);
+            }
+
+            return Some(Playable::from_group(group, player))
+        }
+
+        while let Some(player) = self.players.next() {
+            if !self.yielded_player_ids.contains(&player.info().player_id) {
+                self.yielded_player_ids.insert(player.info().player_id);
+                return Some(player.into())
+            }
+        }
+
+        None
     }
 }

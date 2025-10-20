@@ -1,4 +1,4 @@
-use ahash::{HashMap, HashSet};
+use ahash::HashMap;
 use educe::Educe;
 use std::hash::Hash;
 use std::time::Duration;
@@ -30,15 +30,13 @@ pub mod playable;
 pub mod player;
 pub mod source;
 
-trait FromLockedData<'a> {
+trait FromLockedData<'a>: Send {
     type Data;
 
     fn from_locked_data(
         channel: &'a AsyncMutex<Channel>,
         locked_data: AsyncRwLockReadGuard<'a, Self::Data>,
-    ) -> Self
-    where
-        Self: 'a;
+    ) -> Self;
 
     fn from_locked_map<K>(
         key: &K,
@@ -46,7 +44,7 @@ trait FromLockedData<'a> {
         locked_map: AsyncRwLockReadGuard<'a, HashMap<K, Self::Data>>,
     ) -> Option<Self>
     where
-        Self: Sized + 'a,
+        Self: Sized,
         K: Hash + Eq,
     {
         match AsyncRwLockReadGuard::try_map(locked_map, |map| map.get(key)) {
@@ -55,6 +53,60 @@ trait FromLockedData<'a> {
         }
     }
 }
+
+macro_rules! locked_data_iter {
+    ($iter_name:ident, $id_type:ty, $data_type:ty, $value_type:ident) => {
+        pub struct $iter_name<'a> {
+            channel: &'a tokio::sync::Mutex<crate::channel::Channel>,
+            data: &'a tokio::sync::RwLock<ahash::HashMap<$id_type, $data_type>>,
+            _guard: tokio::sync::RwLockReadGuard<'a, ahash::HashMap<$id_type, $data_type>>,
+            ids: Vec<$id_type>,
+        }
+
+        impl<'a> $iter_name<'a> {
+            pub(super) async fn new(
+                channel: &'a tokio::sync::Mutex<crate::channel::Channel>,
+                data: &'a tokio::sync::RwLock<ahash::HashMap<$id_type, $data_type>>,
+            ) -> Self {
+                let guard = data.read().await;
+                let ids = guard.keys().cloned().collect();
+                Self {
+                    channel,
+                    data,
+                    _guard: guard,
+                    ids,
+                }
+            }
+
+            pub(super) fn get(&self, id: &$id_type) -> Option<$value_type<'a>> {
+                let guard = self.data.try_read()
+                    .expect("RwLock should already be locked with a ReadGuard");
+                let data = tokio::sync::RwLockReadGuard::try_map(guard, |data| data.get(id))
+                    .ok()?;
+                Some($value_type::from_locked_data(self.channel, data))
+            }
+        }
+
+        impl<'a> Iterator for $iter_name<'a> {
+            type Item = $value_type<'a>;
+
+            #[inline]
+            fn next(&mut self) -> Option<Self::Item> {
+                let id = self.ids.pop()?;
+                self.get(&id)
+            }
+
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let len = self.ids.len();
+                (len, Some(len))
+            }
+        }
+
+        impl<'a> ExactSizeIterator for $iter_name<'a> {}
+    };
+}
+use locked_data_iter;
 
 #[derive(Educe)]
 #[educe(Debug)]
@@ -143,8 +195,8 @@ impl State {
         Source::from_locked_map(source_id, &self.channel, guard)
     }
 
-    pub async fn sources(&self) -> LockedDataIter<SourceId, Source> {
-        LockedDataIter::new(&self.channel, &self.sources).await
+    pub async fn sources(&self) -> SourcesIter {
+        SourcesIter::new(&self.channel, &self.sources).await
     }
 
     pub async fn player(&self, player_id: &PlayerId) -> Option<Player<'_>> {
@@ -152,8 +204,8 @@ impl State {
         Player::from_locked_map(player_id, &self.channel, guard)
     }
 
-    pub async fn players(&self) -> LockedDataIter<PlayerId, Player> {
-        LockedDataIter::new(&self.channel, &self.players).await
+    pub async fn players(&self) -> PlayersIter {
+        PlayersIter::new(&self.channel, &self.players).await
     }
 
     pub async fn group(&self, group_id: &GroupId) -> Option<Group<'_>> {
@@ -161,8 +213,8 @@ impl State {
         Group::from_locked_map(group_id, &self.channel, guard)
     }
 
-    pub async fn groups(&self) -> LockedDataIter<GroupId, Group> {
-        LockedDataIter::new(&self.channel, &self.groups).await
+    pub async fn groups(&self) -> GroupsIter {
+        GroupsIter::new(&self.channel, &self.groups).await
     }
 
     pub async fn playable(&self, playable_id: impl Into<PlayableId>) -> Option<Playable<'_>> {
@@ -251,110 +303,5 @@ impl State {
             },
         }
         Ok(())
-    }
-}
-
-#[allow(private_bounds)]
-pub struct LockedDataIter<'a, K, V: FromLockedData<'a>> {
-    channel: &'a AsyncMutex<Channel>,
-    data: &'a AsyncRwLock<HashMap<K, V::Data>>,
-    _guard: AsyncRwLockReadGuard<'a, HashMap<K, V::Data>>,
-    keys: Vec<K>,
-}
-
-#[allow(private_bounds)]
-impl<'a, K, V: FromLockedData<'a>> LockedDataIter<'a, K, V> {
-    async fn new(channel: &'a AsyncMutex<Channel>, data: &'a AsyncRwLock<HashMap<K, V::Data>>) -> Self
-    where
-        K: Clone,
-    {
-        let guard = data.read().await;
-        let keys = guard.keys().map(Clone::clone).collect();
-        Self {
-            channel,
-            data,
-            _guard: guard,
-            keys,
-        }
-    }
-
-    fn get(&self, key: &K) -> Option<V>
-    where
-        K: Hash + Eq,
-        V: 'a,
-    {
-        let guard = self.data.try_read()
-            .expect("RwLock should already be locked with a ReadGuard");
-        let data = AsyncRwLockReadGuard::try_map(guard, |data| data.get(key))
-            .ok()?;
-        let value = V::from_locked_data(self.channel, data);
-        Some(value)
-    }
-}
-
-impl<'a, K, V> Iterator for LockedDataIter<'a, K, V>
-where
-    K: Hash + Eq,
-    V: FromLockedData<'a> + 'a,
-{
-    type Item = V;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let key = self.keys.pop()?;
-        self.get(&key)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.keys.len();
-        (len, Some(len))
-    }
-}
-
-impl<'a, K, V> ExactSizeIterator for LockedDataIter<'a, K, V>
-where
-    K: Hash + Eq,
-    V: FromLockedData<'a> + 'a,
-{}
-
-pub struct PlayablesIter<'a> {
-    yielded_player_ids: HashSet<PlayerId>,
-    groups: LockedDataIter<'a, GroupId, Group<'a>>,
-    players: LockedDataIter<'a, PlayerId, Player<'a>>,
-}
-
-impl<'a> PlayablesIter<'a> {
-    async fn new(state: &'a State) -> Self {
-        Self {
-            yielded_player_ids: HashSet::default(),
-            groups: state.groups().await,
-            players: state.players().await,
-        }
-    }
-}
-
-impl<'a> Iterator for PlayablesIter<'a> {
-    type Item = Playable<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(group) = self.groups.next() {
-            let player = self.players.get(&group.leader_id())?;
-
-            for player in &group.info().players {
-                self.yielded_player_ids.insert(player.player_id);
-            }
-
-            return Some(Playable::from_group(group, player))
-        }
-
-        while let Some(player) = self.players.next() {
-            if !self.yielded_player_ids.contains(&player.info().player_id) {
-                self.yielded_player_ids.insert(player.info().player_id);
-                return Some(player.into())
-            }
-        }
-
-        None
     }
 }

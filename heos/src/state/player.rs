@@ -5,6 +5,7 @@ use tokio::sync::{
     RwLockReadGuard as AsyncRwLockReadGuard,
 };
 use url::Url;
+
 use crate::command::browse::*;
 use crate::command::player::*;
 use crate::command::CommandError;
@@ -13,7 +14,7 @@ use crate::data::player::*;
 use crate::data::song::*;
 use crate::data::source::SourceId;
 use crate::channel::Channel;
-use crate::state::FromLockedData;
+use crate::state::{locked_data_iter, FromLockedData};
 
 #[derive(Debug, Clone)]
 pub struct NowPlaying {
@@ -104,10 +105,7 @@ impl<'a> FromLockedData<'a> for Player<'a> {
     fn from_locked_data(
         channel: &'a AsyncMutex<Channel>,
         data: AsyncRwLockReadGuard<'a, PlayerData>,
-    ) -> Self
-    where
-        Self: 'a,
-    {
+    ) -> Self {
         Self {
             channel,
             data,
@@ -349,6 +347,8 @@ impl<'a> Player<'a> {
         }
     }
 }
+
+locked_data_iter!(PlayersIter, PlayerId, PlayerData, Player);
 
 pub struct Queue<'a> {
     player: &'a Player<'a>,

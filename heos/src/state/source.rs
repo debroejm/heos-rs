@@ -9,7 +9,7 @@ use crate::command::CommandError;
 use crate::data::option::*;
 use crate::data::source::*;
 use crate::channel::Channel;
-use crate::state::FromLockedData;
+use crate::state::{locked_data_iter, FromLockedData};
 
 #[derive(Debug)]
 pub struct SourceData {
@@ -173,3 +173,5 @@ impl<'a> Source<'a> {
             }).await
     }
 }
+
+locked_data_iter!(SourcesIter, SourceId, SourceData, Source);
