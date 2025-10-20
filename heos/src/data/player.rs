@@ -103,7 +103,9 @@ impl_try_from_response_qs!(PlayState);
 #[serde(into = "String", try_from = "String")]
 #[strum(serialize_all = "lowercase")]
 pub enum RepeatMode {
+    #[strum(serialize = "on_all")]
     All,
+    #[strum(serialize = "on_one")]
     One,
     Off,
 }
