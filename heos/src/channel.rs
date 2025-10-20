@@ -76,6 +76,8 @@ pub struct Channel {
 }
 
 impl Channel {
+    pub(crate) const EVENT_BROADCAST_BUFFER: usize = 32;
+    
     async fn read(reader: &mut BufReader<tcp::OwnedReadHalf>) -> Result<String, std::io::Error> {
         let mut buf = Vec::new();
         loop {
@@ -113,7 +115,7 @@ impl Channel {
         let state = Arc::new(Mutex::new(ChannelState {
             current_response: None,
             delayed_responses: HashMap::default(),
-            event_broadcast: BroadcastSender::new(32),
+            event_broadcast: BroadcastSender::new(Self::EVENT_BROADCAST_BUFFER),
         }));
 
         let read_handle = {

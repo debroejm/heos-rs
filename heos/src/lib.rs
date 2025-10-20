@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{
     broadcast::Receiver as BroadcastReceiver,
+    broadcast::Sender as BroadcastSender,
     Mutex as AsyncMutex,
 };
 use tokio_stream::{Stream, StreamExt};
@@ -152,10 +153,6 @@ impl<S: ConnectedState> HeosConnection<S> {
     {
         self.state.channel().lock().await.send_command(command).await
     }
-
-    pub async fn subscribe_event_broadcast(&self) -> BroadcastReceiver<Event> {
-        self.state.channel().lock().await.subscribe_event_broadcast()
-    }
 }
 
 #[derive(Debug)]
@@ -171,28 +168,34 @@ impl ConnectedState for AdHoc {
 }
 
 impl HeosConnection<AdHoc> {
+    pub async fn subscribe_event_broadcast(&self) -> BroadcastReceiver<Event> {
+        self.state.channel().lock().await.subscribe_event_broadcast()
+    }
+
     pub async fn init_stateful(self) -> Result<HeosConnection<Stateful>, CommandError> {
         let state = Arc::new(State::init(self.state.channel.into_inner()).await?);
+        let event_broadcast = BroadcastSender::new(Channel::EVENT_BROADCAST_BUFFER);
         let event_handle = {
             let state = state.clone();
-            let mut event_broadcast = state.channel.lock().await.subscribe_event_broadcast();
+            let weak_event_broadcast = event_broadcast.downgrade();
+            let mut event_recv = state.channel.lock().await.subscribe_event_broadcast();
             tokio::spawn(async move {
                 loop {
-                    let event = match event_broadcast.recv().await {
+                    let event = match event_recv.recv().await {
                         Ok(event) => event,
                         Err(_) => break,
                     };
 
-                    // TODO: Limit amount of spawned event handlers
-                    let state = state.clone();
-                    tokio::spawn(async move {
-                        match state.handle_event(event).await {
-                            Ok(_) => {},
-                            Err(error) => {
-                                warn!(?error, "Failed to handle event");
-                            }
+                    match state.handle_event(event.clone()).await {
+                        Ok(_) => {},
+                        Err(error) => {
+                            warn!(?error, "Failed to handle event");
                         }
-                    });
+                    }
+
+                    if let Some(event_broadcast) = weak_event_broadcast.upgrade() {
+                        let _ = event_broadcast.send(event);
+                    }
                 }
             })
         };
@@ -208,6 +211,7 @@ impl HeosConnection<AdHoc> {
         Ok(HeosConnection {
             state: Stateful {
                 state,
+                event_broadcast,
                 event_handle,
             },
         })
@@ -217,6 +221,7 @@ impl HeosConnection<AdHoc> {
 #[derive(Debug)]
 pub struct Stateful {
     state: Arc<State>,
+    event_broadcast: BroadcastSender<Event>,
     event_handle: tokio::task::JoinHandle<()>,
 }
 
@@ -239,5 +244,11 @@ impl Deref for HeosConnection<Stateful> {
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.state.state
+    }
+}
+
+impl HeosConnection<Stateful> {
+    pub async fn subscribe_event_broadcast(&self) -> BroadcastReceiver<Event> {
+        self.state.event_broadcast.subscribe()
     }
 }
