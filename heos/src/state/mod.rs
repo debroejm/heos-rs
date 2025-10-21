@@ -1,7 +1,6 @@
 use ahash::HashMap;
 use educe::Educe;
 use std::hash::Hash;
-use std::time::Duration;
 use tokio::sync::{
     Mutex as AsyncMutex,
     RwLock as AsyncRwLock,
@@ -240,7 +239,7 @@ impl State {
             Event::GroupsChanged => self.update_groups().await?,
             Event::PlayerStateChanged(event) => {
                 if let Some(player) = self.players.read().await.get(&event.player_id) {
-                    *player.play_state.write().await = event.state;
+                    player.update_play_state(event.state).await;
                 }
             },
             Event::PlayerNowPlayingChanged(event) => {
@@ -249,18 +248,12 @@ impl State {
                         player_id: event.player_id,
                     }).await?.value;
                 if let Some(player) = self.players.read().await.get(&event.player_id) {
-                    *player.now_playing.write().await = NowPlaying {
-                        info: now_playing_info,
-                        elapsed: Duration::default(),
-                        duration: Duration::default(),
-                    };
+                    player.update_now_playing(now_playing_info).await;
                 }
             },
             Event::PlayerNowPlayingProgress(event) => {
                 if let Some(player) = self.players.read().await.get(&event.player_id) {
-                    let mut now_playing = player.now_playing.write().await;
-                    now_playing.elapsed = event.elapsed;
-                    now_playing.duration = event.duration;
+                    player.update_now_playing_progress(event).await;
                 }
             },
             Event::PlayerPlaybackError(event) => {

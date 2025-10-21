@@ -1,4 +1,5 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use educe::Educe;
 use tokio::sync::{
     Mutex as AsyncMutex,
     RwLock as AsyncRwLock,
@@ -14,13 +15,33 @@ use crate::data::player::*;
 use crate::data::song::*;
 use crate::data::source::SourceId;
 use crate::channel::Channel;
+use crate::data::event::PlayerNowPlayingProgress;
 use crate::state::{locked_data_iter, FromLockedData};
+
+#[derive(Educe, Clone)]
+#[educe(Debug)]
+pub struct NowPlayingProgress {
+    pub elapsed: Duration,
+    pub duration: Duration,
+    #[educe(Debug(ignore))]
+    baseline: Option<Instant>,
+}
+
+impl NowPlayingProgress {
+    pub fn interpolated_elapsed(&self) -> Duration {
+        if let Some(baseline) = self.baseline {
+            let diff = Instant::now() - baseline;
+            (self.elapsed + diff).min(self.duration)
+        } else {
+            self.elapsed
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct NowPlaying {
     pub info: NowPlayingInfo,
-    pub elapsed: Duration,
-    pub duration: Duration,
+    pub progress: NowPlayingProgress,
 }
 
 #[derive(Debug)]
@@ -43,8 +64,11 @@ impl PlayerData {
             }).await?.value;
         let now_playing = NowPlaying {
             info: now_playing_info,
-            elapsed: Duration::default(),
-            duration: Duration::default(),
+            progress: NowPlayingProgress {
+                elapsed: Duration::default(),
+                duration: Duration::default(),
+                baseline: None,
+            }
         };
         let queue = channel.lock().await
             .send_command(GetQueue {
@@ -78,6 +102,55 @@ impl PlayerData {
             repeat: AsyncRwLock::new(play_mode.repeat),
             shuffle: AsyncRwLock::new(play_mode.shuffle),
         })
+    }
+
+    pub async fn update_play_state(&self, new_play_state: PlayState) {
+        let mut play_state = self.play_state.write().await;
+        let mut now_playing = self.now_playing.write().await;
+
+        *play_state = new_play_state;
+        match new_play_state {
+            PlayState::Play => {
+                if now_playing.progress.baseline.is_none() {
+                    now_playing.progress.baseline = Some(Instant::now());
+                }
+            },
+            PlayState::Pause | PlayState::Stop => {
+                now_playing.progress.elapsed = now_playing.progress.interpolated_elapsed();
+                now_playing.progress.baseline = None;
+            },
+        }
+    }
+
+    pub async fn update_now_playing(&self, info: NowPlayingInfo) {
+        let play_state = self.play_state.read().await;
+        let mut now_playing = self.now_playing.write().await;
+
+        let baseline = if *play_state == PlayState::Play {
+            Some(Instant::now())
+        } else {
+            None
+        };
+
+        *now_playing = NowPlaying {
+            info,
+            progress: NowPlayingProgress {
+                elapsed: Duration::default(),
+                duration: Duration::default(),
+                baseline,
+            }
+        }
+    }
+
+    pub async fn update_now_playing_progress(&self, event: PlayerNowPlayingProgress) {
+        let play_state = self.play_state.read().await;
+        let mut now_playing = self.now_playing.write().await;
+        now_playing.progress.elapsed = event.elapsed;
+        now_playing.progress.duration = event.duration;
+        if *play_state == PlayState::Play {
+            // update the baseline
+            now_playing.progress.baseline = Some(Instant::now());
+        }
     }
 }
 
