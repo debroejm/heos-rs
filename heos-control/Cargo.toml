@@ -1,0 +1,21 @@
+[package]
+name = "heos-control"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+eframe = "0.33.0"
+egui = "0.33.0"
+egui-async = "0.2.1"
+egui_extras = { version = "0.33.0", features = ["all_loaders"] }
+emath = "0.33.0"
+futures-lite = "2.6"
+heos = { workspace = true }
+# This is used to configure what image loaders are available to egui_extra
+image = { version = "0.25.8", features = ["png", "jpeg", "webp"]}
+parking_lot = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
