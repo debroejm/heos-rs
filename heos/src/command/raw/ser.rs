@@ -4,14 +4,16 @@ use serde::{ser, Serialize};
 use crate::command::Command;
 use crate::command::raw::RawCommand;
 
+/// Error that can occur when serializing a [Command] into a [RawCommand].
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    /// A generic error that doesn't fit in the other categories.
     #[error("{0}")]
     Message(String),
-    #[error("internal error: {0}")]
-    Internal(String),
+    /// Invalid top-level type found while serializing.
     #[error("cannot serialize a top-level type of '{0}'")]
     InvalidTopLevelType(String),
+    /// An unsupported type was found while serializing.
     #[error("value type '{0}' not supported")]
     ValueTypeNotSupported(String),
 }
@@ -189,7 +191,7 @@ impl ser::SerializeMap for CommandSerializer {
         T: ?Sized + Serialize,
     {
         let key = key.serialize(DisplaySerializer::default())?
-            .ok_or(Error::Internal("key should not be 'None'".to_string()))?;
+            .expect("key should not be 'None'");
         self.key = Some(key);
         Ok(())
     }
@@ -199,7 +201,7 @@ impl ser::SerializeMap for CommandSerializer {
         T: ?Sized + Serialize,
     {
         let key = self.key.take()
-            .ok_or(Error::Internal("key not previously set in map".to_string()))?;
+            .expect("key should be previously set in map");
         let value = value.serialize(DisplaySerializer::default())?;
         if let Some(value) = value {
             self.cmd.param(key, value);
