@@ -1,3 +1,5 @@
+/// Compound data types used or returned by HEOS commands.
+
 use std::fmt::Display;
 use std::num::ParseIntError;
 
@@ -13,12 +15,16 @@ pub mod source;
 pub mod system;
 
 macro_rules! id_type {
-    ($type_name:ident) => {
+    (
+        $(#[$attr:meta])*
+        $v:vis struct $type_name:ident(pub $inner_type:ty);
+    ) => {
+        $(#[$attr])*
         #[repr(transparent)]
         #[derive(serde::Serialize, serde::Deserialize, educe::Educe, Clone, Copy, PartialEq, Eq, Hash)]
         #[serde(transparent)]
         #[educe(Deref, DerefMut)]
-        pub struct $type_name(pub i64);
+        $v struct $type_name(pub $inner_type);
 
         // Custom Debug impl so that pretty printing doesn't add unnecessary line breaks
         impl std::fmt::Debug for $type_name {
@@ -35,9 +41,9 @@ macro_rules! id_type {
             }
         }
 
-        impl From<i64> for $type_name {
+        impl From<$inner_type> for $type_name {
             #[inline]
-            fn from(value: i64) -> Self {
+            fn from(value: $inner_type) -> Self {
                 Self(value)
             }
         }
@@ -45,6 +51,7 @@ macro_rules! id_type {
 }
 pub(in crate::data) use id_type;
 
+/// Error that occurs when trying to create a bounded type with a value that is out of bounds.
 #[derive(thiserror::Error, Debug)]
 #[error("'{value}' is out of bounds: {min}..={max}")]
 pub struct NumberOutOfBoundsError<N: Display> {
@@ -53,21 +60,28 @@ pub struct NumberOutOfBoundsError<N: Display> {
     max: N,
 }
 
+/// Error that occurs when failing to parse a bounded type from a string.
 #[derive(thiserror::Error, Debug)]
 pub enum ParseBoundedNumberError<N: Display> {
+    /// The parse failed to find a valid numeric type.
     #[error(transparent)]
     ParseInt(#[from] ParseIntError),
+    /// The parsed number is out of bounds.
     #[error(transparent)]
     OutOfBounds(#[from] NumberOutOfBoundsError<N>),
 }
 
 macro_rules! bounded_number_type {
-    ($type_name:ident, $subtype:ty, $min:literal..=$max:literal) => {
+    (
+        $(#[$attr:meta])*
+        $v:vis struct $type_name:ident($subtype:ty, $min:literal..=$max:literal);
+    ) => {
+        $(#[$attr])*
         #[repr(transparent)]
         #[derive(serde::Serialize, serde::Deserialize, educe::Educe, Clone, Copy, PartialEq, Eq)]
         #[serde(transparent)]
         #[educe(Deref)]
-        pub struct $type_name($subtype);
+        $v struct $type_name($subtype);
 
         // Custom Debug impl so that pretty printing doesn't add unnecessary line breaks
         impl std::fmt::Debug for $type_name {
@@ -85,9 +99,16 @@ macro_rules! bounded_number_type {
         }
 
         impl $type_name {
+            /// Minimum valid value for this bounded type, inclusive.
             pub const MIN: $subtype = $min;
+            /// Maximum valid value for this bounded type, inclusive.
             pub const MAX: $subtype = $max;
 
+            /// Create a new bounded type, checking to make sure the bounds are met.
+            ///
+            /// # Errors
+            ///
+            /// Errors if the given `value` is outside of the valid bounds.
             #[inline]
             pub fn new(value: impl Into<$subtype>) -> Result<Self, crate::data::NumberOutOfBoundsError<$subtype>> {
                 let value = value.into();
@@ -103,11 +124,14 @@ macro_rules! bounded_number_type {
                 }
             }
 
+            /// Add to this bounded type, saturating at [Self::MAX] if the result would be higher.
             #[inline]
             pub fn saturating_add(self, rhs: impl Into<$subtype>) -> Self {
                 Self(self.0.saturating_add(rhs.into()).min(Self::MAX))
             }
 
+            /// Subtract from this bounded type, saturating at [Self::MIN] if the result would be
+            /// lower.
             #[inline]
             pub fn saturating_sub(self, rhs: impl Into<$subtype>) -> Self {
                 Self(self.0.saturating_sub(rhs.into()).max(Self::MIN))
