@@ -1,3 +1,5 @@
+/// Stateful source management.
+
 use std::ops::RangeInclusive;
 use tokio::sync::{
     Mutex as AsyncMutex,
@@ -12,7 +14,7 @@ use crate::channel::Channel;
 use crate::state::{locked_data_iter, FromLockedData};
 
 #[derive(Debug)]
-pub struct SourceData {
+pub(super) struct SourceData {
     pub info: SourceInfo,
 }
 
@@ -25,6 +27,15 @@ impl SourceData {
     }
 }
 
+/// Live view into a source's state.
+///
+/// This provides methods to asynchronously retrieve the latest stateful data, as well as send
+/// command requests relevant to this source.
+///
+/// This view owns a read lock on the list of source states. This means that individual source state
+/// (including this source) can be updated when relevant events come in, but
+/// [SourcesChanged](crate::data::event::Event::SourcesChanged) events will be delayed until this
+/// lock is released.
 pub struct Source<'a> {
     channel: &'a AsyncMutex<Channel>,
     data: AsyncRwLockReadGuard<'a, SourceData>,
@@ -49,11 +60,17 @@ impl<'a> FromLockedData<'a> for Source<'a> {
 }
 
 impl<'a> Source<'a> {
+    /// Get general non-mutable information about this source.
     #[inline]
     pub fn info(&self) -> &SourceInfo {
         &self.data.info
     }
 
+    /// Browse a top-level view of music for this source.
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [Browse] command errors.
     pub async fn browse(&self) -> Result<WithOptions<Vec<SourceItem>>, CommandError> {
         self.channel.lock().await
             .send_command(Browse {
@@ -63,6 +80,11 @@ impl<'a> Source<'a> {
             }).await
     }
 
+    /// Browse a specific container of music for this source.
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [Browse] command errors.
     pub async fn browse_container(
         &self,
         container_id: impl Into<String>,
@@ -76,6 +98,11 @@ impl<'a> Source<'a> {
             }).await
     }
 
+    /// Retrieve valid search criteria for this source.
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [GetSearchCriteria] command errors.
     pub async fn search_criteria(&self) -> Result<Vec<SearchCriteria>, CommandError> {
         self.channel.lock().await
             .send_command(GetSearchCriteria {
@@ -83,6 +110,13 @@ impl<'a> Source<'a> {
             }).await
     }
 
+    /// Search this source for music.
+    ///
+    /// `criteria` should be a criteria ID yielded by [Self::search_criteria()].
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [Search] command errors.
     pub async fn search(
         &self,
         search: impl Into<String>,
@@ -127,19 +161,29 @@ impl<'a> Source<'a> {
         })
     }
 
+    /// Rename a playlist belonging to this source.
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [RenamePlaylist] command errors.
     pub async fn rename_playlist(
         &self,
         container_id: impl Into<String>,
-        name: impl Into<String>,
+        new_name: impl Into<String>,
     ) -> Result<(), CommandError> {
         self.channel.lock().await
             .send_command(RenamePlaylist {
                 source_id: self.data.info.source_id,
                 container_id: container_id.into(),
-                name: name.into(),
+                name: new_name.into(),
             }).await
     }
 
+    /// Delete a playlist belonging to this source.
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [DeletePlaylist] command errors.
     pub async fn delete_playlist(
         &self,
         container_id: impl Into<String>,
@@ -151,6 +195,11 @@ impl<'a> Source<'a> {
             }).await
     }
 
+    /// Retrieve album metadata for an album that comes from this source.
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [GetAlbumMetadata] command errors.
     pub async fn album_metadata(
         &self,
         container_id: impl Into<String>,
@@ -162,6 +211,11 @@ impl<'a> Source<'a> {
             }).await
     }
 
+    /// Set a [ServiceOption] associated with this source.
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [SetServiceOption] command errors.
     pub async fn set_service_option(
         &self,
         option: ServiceOption,

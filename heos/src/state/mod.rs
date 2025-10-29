@@ -1,3 +1,13 @@
+/// Stateful management of a connected HEOS system.
+///
+/// Whereas the [data](crate::data) module deals with pure data at an instant in time, this module
+/// contains the logic necessary to maintain a stateful connection to a HEOS system, and keep it
+/// updated in real time using [events](crate::data::event) that are output from said HEOS system.
+///
+/// Most of the types in this module provide "views" into the state without providing ownership over
+/// it. The ownership of all state belongs to the top-level [HeosConnection](crate::HeosConnection),
+/// and these views can be retrieved from a [stateful](crate::Stateful) instance of that connection.
+
 use ahash::HashMap;
 use educe::Educe;
 use std::hash::Hash;
@@ -55,6 +65,7 @@ trait FromLockedData<'a>: Send {
 
 macro_rules! locked_data_iter {
     ($iter_name:ident, $id_type:ty, $data_type:ty, $value_type:ident) => {
+        #[doc = concat!("Iterator for ", stringify!($value_type), "s")]
         pub struct $iter_name<'a> {
             channel: &'a tokio::sync::Mutex<crate::channel::Channel>,
             data: &'a tokio::sync::RwLock<ahash::HashMap<$id_type, $data_type>>,
@@ -107,6 +118,7 @@ macro_rules! locked_data_iter {
 }
 use locked_data_iter;
 
+/// State that is managed in a [stateful](crate::Stateful) [HeosConnection](crate::HeosConnection).
 #[derive(Educe)]
 #[educe(Debug)]
 pub struct State {
@@ -121,7 +133,7 @@ pub struct State {
 }
 
 impl State {
-    pub async fn init(channel: Channel) -> Result<Self, CommandError> {
+    pub(crate) async fn init(channel: Channel) -> Result<Self, CommandError> {
         let mut channel = channel;
         let account = channel.send_command(CheckAccount::default()).await?;
 
@@ -185,37 +197,53 @@ impl State {
         Ok(())
     }
 
+    /// Retrieve the status of the signed-in HEOS account.
     pub async fn account(&self) -> AccountStatus {
         self.account.read().await.clone()
     }
 
+    /// Retrieve a [Source] by ID.
+    ///
+    /// Yields `None` if no source exists for the specified ID.
     pub async fn source(&self, source_id: &SourceId) -> Option<Source<'_>> {
         let guard = self.sources.read().await;
         Source::from_locked_map(source_id, &self.channel, guard)
     }
 
+    /// Retrieve an iterator over all [Sources](Source).
     pub async fn sources(&self) -> SourcesIter {
         SourcesIter::new(&self.channel, &self.sources).await
     }
 
+    /// Retrieve a [Player] by ID.
+    ///
+    /// Yields `None` if no player exists for the specified ID.
     pub async fn player(&self, player_id: &PlayerId) -> Option<Player<'_>> {
         let guard = self.players.read().await;
         Player::from_locked_map(player_id, &self.channel, guard)
     }
 
+    /// Retrieve an iterator over all [Players](Player).
     pub async fn players(&self) -> PlayersIter {
         PlayersIter::new(&self.channel, &self.players).await
     }
 
+    /// Retrieve a [Group] by ID.
+    ///
+    /// Yields `None` if no group exists for the specified ID.
     pub async fn group(&self, group_id: &GroupId) -> Option<Group<'_>> {
         let guard = self.groups.read().await;
         Group::from_locked_map(group_id, &self.channel, guard)
     }
 
+    /// Retrieve an iterator over all [Groups](Group).
     pub async fn groups(&self) -> GroupsIter {
         GroupsIter::new(&self.channel, &self.groups).await
     }
 
+    /// Retrieve a [Playable] by ID.
+    ///
+    /// Yields `None` if no playable exists for the specified ID.
     pub async fn playable(&self, playable_id: impl Into<PlayableId>) -> Option<Playable<'_>> {
         let playable_id = playable_id.into();
         match playable_id {
@@ -228,6 +256,13 @@ impl State {
         }
     }
 
+    /// Retrieve an iterator over all [Playables](Playable).
+    ///
+    /// Note that if a player is a part of a group, it will not be yielded by this iterator, as it
+    /// will be counted as "already yielded" as part of the group.
+    ///
+    /// As an implementation detail, this will yield all groups first, and then all players. This
+    /// should NOT be relied upon, and may change without notice at any point in time.
     pub async fn playables(&self) -> PlayablesIter {
         PlayablesIter::new(self).await
     }
