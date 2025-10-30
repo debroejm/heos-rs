@@ -1,4 +1,9 @@
-## [0.2.1] - 2025-10-30
+## [0.2.2] - 2025-10-30
+
+### 📚 Documentation
+
+- Fix module level documentation
+## [heos-v0.2.1] - 2025-10-30
 
 ### 🐛 Bug Fixes
 
@@ -26,3 +31,4 @@
 
 - *(heos)* Bump version 0.1.0 => 0.2.0
 - Update changelog
+- Release
