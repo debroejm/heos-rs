@@ -25,6 +25,7 @@ struct DelayedResponse {
     response: Option<RawResponse>,
 }
 
+/// Future for retrieving a [RawResponse] from the HEOS connection.
 #[derive(Debug)]
 pub struct RawResponseFuture {
     inner: Arc<Mutex<DelayedResponse>>,
