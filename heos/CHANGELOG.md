@@ -25,3 +25,4 @@
 ### ⚙️ Miscellaneous Tasks
 
 - *(heos)* Bump version 0.1.0 => 0.2.0
+- Update changelog
