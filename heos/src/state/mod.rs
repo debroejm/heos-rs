@@ -211,7 +211,7 @@ impl State {
     }
 
     /// Retrieve an iterator over all [Sources](Source).
-    pub async fn sources(&self) -> SourcesIter {
+    pub async fn sources(&self) -> SourcesIter<'_> {
         SourcesIter::new(&self.channel, &self.sources).await
     }
 
@@ -224,7 +224,7 @@ impl State {
     }
 
     /// Retrieve an iterator over all [Players](Player).
-    pub async fn players(&self) -> PlayersIter {
+    pub async fn players(&self) -> PlayersIter<'_> {
         PlayersIter::new(&self.channel, &self.players).await
     }
 
@@ -237,7 +237,7 @@ impl State {
     }
 
     /// Retrieve an iterator over all [Groups](Group).
-    pub async fn groups(&self) -> GroupsIter {
+    pub async fn groups(&self) -> GroupsIter<'_> {
         GroupsIter::new(&self.channel, &self.groups).await
     }
 
@@ -263,7 +263,7 @@ impl State {
     ///
     /// As an implementation detail, this will yield all groups first, and then all players. This
     /// should NOT be relied upon, and may change without notice at any point in time.
-    pub async fn playables(&self) -> PlayablesIter {
+    pub async fn playables(&self) -> PlayablesIter<'_> {
         PlayablesIter::new(self).await
     }
 
