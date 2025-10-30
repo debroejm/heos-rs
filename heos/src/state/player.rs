@@ -1,4 +1,4 @@
-/// Stateful player management.
+//! Stateful player management.
 
 use educe::Educe;
 use std::time::{Duration, Instant};

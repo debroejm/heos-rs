@@ -1,6 +1,6 @@
-/// Commands to query/control groups of players.
-///
-/// See [crate::data::group] for more information on groups.
+//! Commands to query/control groups of players.
+//!
+//! See [crate::data::group] for more information on groups.
 
 use serde::Serialize;
 

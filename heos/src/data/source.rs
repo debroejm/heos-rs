@@ -1,25 +1,25 @@
-/// Data types representing music sources.
-///
-/// A music source is anything that can provide music to HEOS players.
-///
-/// Built-in music sources include:
-///  * Local USB Media / Local DLNA servers
-///  * HEOS Playlists
-///  * HEOS History
-///  * HEOS aux inputs
-///  * HEOS Favorites
-///
-/// As of CLI spec v1.17, these are the 3rd-party music services that HEOS supports through the CLI:
-///  * Pandora
-///  * Rhapsody
-///  * TuneIn
-///  * Deezer
-///  * Napster
-///  * iHeartRadio
-///  * Sirius XM
-///  * Soundcloud
-///  * Tidal
-///  * Amazon Music
+//! Data types representing music sources.
+//!
+//! A music source is anything that can provide music to HEOS players.
+//!
+//! Built-in music sources include:
+//!  * Local USB Media / Local DLNA servers
+//!  * HEOS Playlists
+//!  * HEOS History
+//!  * HEOS aux inputs
+//!  * HEOS Favorites
+//!
+//! As of CLI spec v1.17, these are the 3rd-party music services that HEOS supports through the CLI:
+//!  * Pandora
+//!  * Rhapsody
+//!  * TuneIn
+//!  * Deezer
+//!  * Napster
+//!  * iHeartRadio
+//!  * Sirius XM
+//!  * Soundcloud
+//!  * Tidal
+//!  * Amazon Music
 
 use educe::Educe;
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,6 @@
-/// Commands to query/control individual players.
-///
-/// See [crate::data::player] for more information on players.
+//! Commands to query/control individual players.
+//!
+//! See [crate::data::player] for more information on players.
 
 use serde::Serialize;
 use std::ops::RangeInclusive;

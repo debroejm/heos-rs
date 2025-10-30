@@ -1,6 +1,6 @@
-/// Commands that affect the HEOS system.
-/// 
-/// These commands include e.g. HEOS account management.
+//! Commands that affect the HEOS system.
+//! 
+//! These commands include e.g. HEOS account management.
 
 use serde::Serialize;
 

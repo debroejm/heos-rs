@@ -1,4 +1,4 @@
-/// Compound data types used or returned by HEOS commands.
+//! Compound data types used or returned by HEOS commands.
 
 use std::fmt::Display;
 use std::num::ParseIntError;

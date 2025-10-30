@@ -1,8 +1,8 @@
-/// Data types representing HEOS groups.
-///
-/// A HEOS group comprises two or more [players](player), with one player being designated as the
-/// "group leader". Controlling a group is done via controlling the group leader, and all other
-/// players in the group will synchronize with said leader.
+//! Data types representing HEOS groups.
+//!
+//! A HEOS group comprises two or more [players](player), with one player being designated as the
+//! "group leader". Controlling a group is done via controlling the group leader, and all other
+//! players in the group will synchronize with said leader.
 
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;

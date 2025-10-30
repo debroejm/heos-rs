@@ -1,6 +1,6 @@
-/// Commands to query music sources and browse/search for music.
-///
-/// See [crate::data::source] for more information on music sources.
+//! Commands to query music sources and browse/search for music.
+//!
+//! See [crate::data::source] for more information on music sources.
 
 use serde::Serialize;
 use std::ops::RangeInclusive;

@@ -1,4 +1,4 @@
-/// Data types that are common to more than one module.
+//! Data types that are common to more than one module.
 
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;

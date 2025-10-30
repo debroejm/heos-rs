@@ -1,4 +1,4 @@
-/// Stateful group management.
+//! Stateful group management.
 
 use tokio::sync::{
     Mutex as AsyncMutex,

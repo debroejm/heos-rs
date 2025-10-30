@@ -1,82 +1,82 @@
-/// Rust bindings for the HEOS control protocol.
-///
-/// The published specifications for the latest version of the CLI (1.17 at time of writing) can be
-/// found here:
-/// https://rn.dmglobal.com/usmodel/HEOS_CLI_ProtocolSpecification-Version-1.17.pdf
-///
-/// If that links gets stale and no longer works, a newer version may be able to be found on the
-/// Denon support website, here:
-/// https://support.denon.com/app/answers/detail/a_id/6953/~/heos-control-protocol-%28cli%29
-///
-/// # Getting a Connection
-///
-/// A HEOS system on the local network can be found via SSDP discovery. The following initiates SSDP
-/// discovery and yields an asynchronous stream of possible HEOS connection endpoints as they're
-/// discovered:
-///
-/// ```
-/// use heos::HeosConnection;
-/// # use heos::{Created, ScanError};
-/// use std::time::Duration;
-/// # use tokio_stream::Stream;
-///
-/// # async fn wrapper() -> Result<impl Stream<Item=HeosConnection<Created>>, ScanError> {
-/// let endpoints = HeosConnection::scan(Duration::from_secs(10)).await?;
-/// # Ok(endpoints)
-/// # }
-/// ```
-///
-/// Once endpoints have been discovered, any of them can be chosen to be used as the connection. The
-/// HEOS CLI uses a distributed system where a connection to any HEOS device can control all HEOS
-/// devices on the same network.
-///
-/// ```
-/// use heos::{ConnectError, HeosConnection};
-/// # use heos::AdHoc;
-/// use std::time::Duration;
-/// use tokio_stream::StreamExt;
-///
-/// # async fn wrapper() -> Result<HeosConnection<AdHoc>, ConnectError> {
-/// let mut endpoints = HeosConnection::scan(Duration::from_secs(10)).await?;
-/// let connection = endpoints.next().await
-///     .ok_or(ConnectError::NoDevicesFound)?
-///     .connect().await?;
-/// # Ok(connection)
-/// # }
-/// ```
-///
-/// Or, to do all of the above in one method:
-///
-/// ```
-/// use heos::HeosConnection;
-/// # use heos::{AdHoc, ConnectError};
-/// use std::time::Duration;
-///
-/// # async fn wrapper() -> Result<HeosConnection<AdHoc>, ConnectError> {
-/// let connection = HeosConnection::connect_any(Duration::from_secs(10)).await?;
-/// # Ok(connection)
-/// # }
-/// ```
-///
-/// # Stateful Connections
-///
-/// The HEOS system supports sending change events whenever any part of the internal state changes.
-/// Using these, we can maintain a stateful representation of the system without needing to re-query
-/// all the time.
-///
-/// A stateful connection can be initiated like so:
-///
-/// ```
-/// use heos::HeosConnection;
-/// # use heos::{Stateful, ConnectError};
-/// use std::time::Duration;
-///
-/// # async fn wrapper() -> Result<HeosConnection<Stateful>, ConnectError> {
-/// let connection = HeosConnection::connect_any(Duration::from_secs(10)).await?;
-/// let stateful = connection.init_stateful().await?;
-/// # Ok(stateful)
-/// # }
-/// ```
+//! Rust bindings for the HEOS control protocol.
+//!
+//! The published specifications for the latest version of the CLI (1.17 at time of writing) can be
+//! found here:
+//! https://rn.dmglobal.com/usmodel/HEOS_CLI_ProtocolSpecification-Version-1.17.pdf
+//!
+//! If that links gets stale and no longer works, a newer version may be able to be found on the
+//! Denon support website, here:
+//! https://support.denon.com/app/answers/detail/a_id/6953/~/heos-control-protocol-%28cli%29
+//!
+//! # Getting a Connection
+//!
+//! A HEOS system on the local network can be found via SSDP discovery. The following initiates SSDP
+//! discovery and yields an asynchronous stream of possible HEOS connection endpoints as they're
+//! discovered:
+//!
+//! ```
+//! use heos::HeosConnection;
+//! # use heos::{Created, ScanError};
+//! use std::time::Duration;
+//! # use tokio_stream::Stream;
+//!
+//! # async fn wrapper() -> Result<impl Stream<Item=HeosConnection<Created>>, ScanError> {
+//! let endpoints = HeosConnection::scan(Duration::from_secs(10)).await?;
+//! # Ok(endpoints)
+//! # }
+//! ```
+//!
+//! Once endpoints have been discovered, any of them can be chosen to be used as the connection. The
+//! HEOS CLI uses a distributed system where a connection to any HEOS device can control all HEOS
+//! devices on the same network.
+//!
+//! ```
+//! use heos::{ConnectError, HeosConnection};
+//! # use heos::AdHoc;
+//! use std::time::Duration;
+//! use tokio_stream::StreamExt;
+//!
+//! # async fn wrapper() -> Result<HeosConnection<AdHoc>, ConnectError> {
+//! let mut endpoints = HeosConnection::scan(Duration::from_secs(10)).await?;
+//! let connection = endpoints.next().await
+//!     .ok_or(ConnectError::NoDevicesFound)?
+//!     .connect().await?;
+//! # Ok(connection)
+//! # }
+//! ```
+//!
+//! Or, to do all of the above in one method:
+//!
+//! ```
+//! use heos::HeosConnection;
+//! # use heos::{AdHoc, ConnectError};
+//! use std::time::Duration;
+//!
+//! # async fn wrapper() -> Result<HeosConnection<AdHoc>, ConnectError> {
+//! let connection = HeosConnection::connect_any(Duration::from_secs(10)).await?;
+//! # Ok(connection)
+//! # }
+//! ```
+//!
+//! # Stateful Connections
+//!
+//! The HEOS system supports sending change events whenever any part of the internal state changes.
+//! Using these, we can maintain a stateful representation of the system without needing to re-query
+//! all the time.
+//!
+//! A stateful connection can be initiated like so:
+//!
+//! ```
+//! use heos::HeosConnection;
+//! # use heos::{Stateful, ConnectError};
+//! use std::time::Duration;
+//!
+//! # async fn wrapper() -> Result<HeosConnection<Stateful>, ConnectError> {
+//! let connection = HeosConnection::connect_any(Duration::from_secs(10)).await?;
+//! let stateful = connection.init_stateful().await?;
+//! # Ok(stateful)
+//! # }
+//! ```
 
 use ssdp_client::{SearchTarget, URN};
 use std::net::{IpAddr, SocketAddr};

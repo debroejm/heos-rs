@@ -1,4 +1,4 @@
-/// Data types that are relevant to [system](crate::command::system) commands.
+//! Data types that are relevant to [system](crate::command::system) commands.
 
 use qstring::QString;
 use serde::{Deserialize, Serialize};

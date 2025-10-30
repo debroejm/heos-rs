@@ -1,4 +1,4 @@
-/// Data types representing the queue of song tracks to play.
+//! Data types representing the queue of song tracks to play.
 // TODO: Rename this module to 'queue'
 
 use educe::Educe;

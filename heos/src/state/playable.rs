@@ -1,12 +1,12 @@
-/// Abstraction around anything stateful that can play music.
-///
-/// A "playable" is considered to be anything that can play music or otherwise has music "controls",
-/// such as volume, next/prev, etc. A [player](super::player) is obviously a playable, but so is a
-/// [group](super::group), since a group can play and control music as a group.
-///
-/// For example, when a playable is a group, many aspects of the playable - such as the queue and
-/// repeat/shuffle modes - are simply retrieved from the group's leader, while some aspects that a
-/// group controls - such as the volume - are retrieved from the group itself.
+//! Abstraction around anything stateful that can play music.
+//!
+//! A "playable" is considered to be anything that can play music or otherwise has music "controls",
+//! such as volume, next/prev, etc. A [player](super::player) is obviously a playable, but so is a
+//! [group](super::group), since a group can play and control music as a group.
+//!
+//! For example, when a playable is a group, many aspects of the playable - such as the queue and
+//! repeat/shuffle modes - are simply retrieved from the group's leader, while some aspects that a
+//! group controls - such as the volume - are retrieved from the group itself.
 
 use ahash::HashSet;
 use educe::Educe;

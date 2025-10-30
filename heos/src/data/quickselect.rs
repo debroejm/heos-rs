@@ -1,6 +1,6 @@
-/// Data types representing QuickSelect slots.
-///
-/// QuickSelect is limited to certain HEOS devices, and allows easily playing a saved preset.
+//! Data types representing QuickSelect slots.
+//!
+//! QuickSelect is limited to certain HEOS devices, and allows easily playing a saved preset.
 
 use serde::Deserialize;
 

@@ -1,15 +1,15 @@
-/// Data types relevant to music service-specific options.
-///
-/// Different music services can have unique options that can be set or otherwise managed. These
-/// data types represent those options, and will usually only apply to certain music services.
-///
-/// The following commands can yield responses that contain data wrapped [WithOptions]:
-///  * [GetNowPlayingMedia](crate::command::player::GetNowPlayingMedia)
-///  * [Browse](crate::command::browse::Browse)
-///  * [Search](crate::command::browse::Search)
-///
-/// Once valid option types have been discovered via the above commands, they can be set via
-/// [SetServiceOption](crate::command::browse::SetServiceOption).
+//! Data types relevant to music service-specific options.
+//!
+//! Different music services can have unique options that can be set or otherwise managed. These
+//! data types represent those options, and will usually only apply to certain music services.
+//!
+//! The following commands can yield responses that contain data wrapped [WithOptions]:
+//!  * [GetNowPlayingMedia](crate::command::player::GetNowPlayingMedia)
+//!  * [Browse](crate::command::browse::Browse)
+//!  * [Search](crate::command::browse::Search)
+//!
+//! Once valid option types have been discovered via the above commands, they can be set via
+//! [SetServiceOption](crate::command::browse::SetServiceOption).
 
 use std::ops::RangeInclusive;
 use educe::Educe;

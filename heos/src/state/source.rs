@@ -1,4 +1,4 @@
-/// Stateful source management.
+//! Stateful source management.
 
 use std::ops::RangeInclusive;
 use tokio::sync::{

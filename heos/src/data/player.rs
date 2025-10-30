@@ -1,6 +1,6 @@
-/// Data types representing HEOS players.
-///
-/// A HEOS player is a single device that can play music.
+//! Data types representing HEOS players.
+//!
+//! A HEOS player is a single device that can play music.
 
 use educe::Educe;
 use qstring::QString;

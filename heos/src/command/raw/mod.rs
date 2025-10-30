@@ -1,7 +1,7 @@
-/// Raw untyped commands.
-///
-/// All typed [Commands](Command) can be serialized into a [RawCommand], which can be further
-/// serialized into a pure string. See [RawCommand] for more.
+//! Raw untyped commands.
+//!
+//! All typed [Commands](Command) can be serialized into a [RawCommand], which can be further
+//! serialized into a pure string. See [RawCommand] for more.
 
 use ahash::HashMap;
 use serde::Serialize;

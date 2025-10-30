@@ -1,12 +1,12 @@
-/// Stateful management of a connected HEOS system.
-///
-/// Whereas the [data](crate::data) module deals with pure data at an instant in time, this module
-/// contains the logic necessary to maintain a stateful connection to a HEOS system, and keep it
-/// updated in real time using [events](crate::data::event) that are output from said HEOS system.
-///
-/// Most of the types in this module provide "views" into the state without providing ownership over
-/// it. The ownership of all state belongs to the top-level [HeosConnection](crate::HeosConnection),
-/// and these views can be retrieved from a [stateful](crate::Stateful) instance of that connection.
+//! Stateful management of a connected HEOS system.
+//!
+//! Whereas the [data](crate::data) module deals with pure data at an instant in time, this module
+//! contains the logic necessary to maintain a stateful connection to a HEOS system, and keep it
+//! updated in real time using [events](crate::data::event) that are output from said HEOS system.
+//!
+//! Most of the types in this module provide "views" into the state without providing ownership over
+//! it. The ownership of all state belongs to the top-level [HeosConnection](crate::HeosConnection),
+//! and these views can be retrieved from a [stateful](crate::Stateful) instance of that connection.
 
 use ahash::HashMap;
 use educe::Educe;

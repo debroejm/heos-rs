@@ -1,15 +1,15 @@
-/// Commands that can be sent to HEOS devices.
-///
-/// These are organized into several modules, broadly categorized by the command 'group' as
-/// specified by the HEOS CLI specification. These modules are as follows:
-///  * [`system`]: Commands related to managing the HEOS control system as a whole.
-///  * [`player`]: Commands related to managing individual player devices.
-///  * [`group`]: Commands related to managing groups of HEOS devices.
-///  * [`browse`]: Commands related to source-specific browse and search functionality.
-///
-/// In addition, there is a [`raw`] module that allows users to construct
-/// [raw commands](raw::RawCommand) in the event that the provided typed commands are insufficient,
-/// although this should be unlikely.
+//! Commands that can be sent to HEOS devices.
+//!
+//! These are organized into several modules, broadly categorized by the command 'group' as
+//! specified by the HEOS CLI specification. These modules are as follows:
+//!  * [`system`]: Commands related to managing the HEOS control system as a whole.
+//!  * [`player`]: Commands related to managing individual player devices.
+//!  * [`group`]: Commands related to managing groups of HEOS devices.
+//!  * [`browse`]: Commands related to source-specific browse and search functionality.
+//!
+//! In addition, there is a [`raw`] module that allows users to construct
+//! [raw commands](raw::RawCommand) in the event that the provided typed commands are insufficient,
+//! although this should be unlikely.
 
 use serde::Serialize;
 use std::fmt::Debug;

@@ -1,12 +1,12 @@
-/// Data types for change events.
-///
-/// The HEOS system sends change events whenever the internal HEOS state changes in some fashion.
-/// This can be e.g. when the currently playing song changes to a new song, when a player's volume
-/// or play mode changes, or even when new players are added to the system, among others. See
-/// [Event] for a full list of possible events.
-///
-/// By default, the HEOS system does not send change events until a connection has registered for
-/// them via the [RegisterForChangeEvents](crate::command::system::RegisterForChangeEvents) command.
+//! Data types for change events.
+//!
+//! The HEOS system sends change events whenever the internal HEOS state changes in some fashion.
+//! This can be e.g. when the currently playing song changes to a new song, when a player's volume
+//! or play mode changes, or even when new players are added to the system, among others. See
+//! [Event] for a full list of possible events.
+//!
+//! By default, the HEOS system does not send change events until a connection has registered for
+//! them via the [RegisterForChangeEvents](crate::command::system::RegisterForChangeEvents) command.
 
 use serde::{Deserialize, Deserializer};
 use std::time::Duration;

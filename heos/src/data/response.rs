@@ -1,4 +1,4 @@
-/// Raw response data types.
+//! Raw response data types.
 
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
