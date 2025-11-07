@@ -87,6 +87,7 @@ use tokio::sync::{
     broadcast::Receiver as BroadcastReceiver,
     broadcast::Sender as BroadcastSender,
     Mutex as AsyncMutex,
+    MutexGuard as AsyncMutexGuard,
 };
 use tokio_stream::{Stream, StreamExt};
 use tracing::{trace, warn};
@@ -94,17 +95,16 @@ use url::{Host, Url};
 
 pub use ssdp_client::Error as ScanError;
 
-use crate::channel::Channel;
+use crate::channel::{Channel, TcpChannel};
 use crate::command::raw::RawCommand;
 use crate::command::system::RegisterForChangeEvents;
 use crate::command::{Command, CommandError};
 use crate::data::event::Event;
+use crate::data::response::RawResponse;
 use crate::data::system::ChangeEventsEnabled;
 use crate::state::State;
 
-pub use channel::RawResponseFuture;
-
-mod channel;
+pub mod channel;
 pub mod command;
 pub mod data;
 pub mod state;
@@ -213,17 +213,9 @@ impl HeosConnection<Created> {
     /// This will transition the internal state from [Created] to [AdHoc].
     pub async fn connect(self) -> Result<HeosConnection<AdHoc>, ConnectError> {
         let socket_addr = SocketAddr::new(self.state.ip, Self::HEOS_PORT);
-        let channel = AsyncMutex::new(Channel::connect(socket_addr).await?);
+        let channel = Channel::new(TcpChannel::new(socket_addr)).await?;
 
-        let connection = HeosConnection {
-            state: AdHoc {
-                channel,
-            }
-        };
-
-        connection.command(RegisterForChangeEvents {
-            enable: ChangeEventsEnabled::Off,
-        }).await?;
+        let connection = HeosConnection::from_channel(channel).await?;
 
         Ok(connection)
     }
@@ -250,13 +242,18 @@ trait ConnectedState {
 
 #[allow(private_bounds)]
 impl<S: ConnectedState> HeosConnection<S> {
+    /// Acquire a reference to the [Channel].
+    pub async fn channel(&self) -> AsyncMutexGuard<'_, Channel> {
+        self.state.channel().lock().await
+    }
+
     /// Send a [RawCommand] over this connection.
     ///
     /// # Errors
     ///
     /// Errors if the connection has an IO error while sending the command and receiving the
     /// response.
-    pub async fn raw_command(&self, command: RawCommand) -> Result<RawResponseFuture, std::io::Error> {
+    pub async fn raw_command(&self, command: RawCommand) -> Result<RawResponse, std::io::Error> {
         self.state.channel().lock().await.send_raw_command(command).await
     }
 
@@ -291,6 +288,26 @@ impl ConnectedState for AdHoc {
 }
 
 impl HeosConnection<AdHoc> {
+    /// Create a connection directly from a [Channel].
+    ///
+    /// This is an advanced use case, and only useful if you have a custom
+    /// [ChannelBackend](channel::ChannelBackend). Usually, you should use e.g.
+    /// [`HeosConnection<Created>::connect_any()`].
+    pub async fn from_channel(channel: Channel) -> Result<Self, CommandError> {
+        let channel = AsyncMutex::new(channel);
+        let connection = HeosConnection {
+            state: AdHoc {
+                channel,
+            }
+        };
+
+        connection.command(RegisterForChangeEvents {
+            enable: ChangeEventsEnabled::Off,
+        }).await?;
+
+        Ok(connection)
+    }
+
     /// Subscribe to [change events](data::event) emitted by the HEOS system.
     pub async fn subscribe_event_broadcast(&self) -> BroadcastReceiver<Event> {
         self.state.channel().lock().await.subscribe_event_broadcast()
@@ -384,8 +401,9 @@ impl Deref for HeosConnection<Stateful> {
 impl HeosConnection<Stateful> {
     /// Subscribe to [change events](data::event) emitted by the HEOS system.
     ///
-    /// Events will first be fully processed by the stateful connection before being passed to the
-    /// user.
+    /// When subscribing via this method, events will first be fully processed by the stateful
+    /// connection before being passed to the user, ensuring that the stateful connection is
+    /// up-to-date before user hooks run their logic.
     pub async fn subscribe_event_broadcast(&self) -> BroadcastReceiver<Event> {
         self.state.event_broadcast.subscribe()
     }

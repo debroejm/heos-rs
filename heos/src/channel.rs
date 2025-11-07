@@ -1,11 +1,21 @@
+//! Command/response channels.
+//!
+//! This module contains the implementations that manage sending [commands](crate::command) and
+//! receiving [responses](crate::data::response). In general, the contents of this module are not
+//! commonly used directly by users, as it is more ergonomic to use the higher level
+//! [connection](crate::HeosConnection) abstractions.
+
 use ahash::HashMap;
+use async_trait::async_trait;
+use educe::Educe;
 use parking_lot::Mutex;
+use std::fmt::Debug;
+use std::io::Result as IoResult;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
-use educe::Educe;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{tcp, TcpStream};
 use tokio::sync::broadcast::{
@@ -14,8 +24,8 @@ use tokio::sync::broadcast::{
 };
 use tracing::{error, trace, warn};
 
-use crate::command::{Command, CommandError};
 use crate::command::raw::RawCommand;
+use crate::command::{Command, CommandError};
 use crate::data::event::Event;
 use crate::data::response::RawResponse;
 
@@ -27,7 +37,7 @@ struct DelayedResponse {
 
 /// Future for retrieving a [RawResponse] from the HEOS connection.
 #[derive(Debug)]
-pub struct RawResponseFuture {
+struct RawResponseFuture {
     inner: Arc<Mutex<DelayedResponse>>,
 }
 
@@ -60,25 +70,165 @@ impl Future for RawResponseFuture {
     }
 }
 
+/// Interface for the backend definition for a [Channel].
+///
+/// The backend is responsible for actually sending and receiving raw data. The implementation can
+/// change for e.g. WASM vs other platforms, or for custom test implementations.
+///
+/// In general, the user should never need to implement their own backend, as the default
+/// implementations used by this library should suffice. However, in the event that the user wants
+/// to communicate with a HEOS system in a way this library doesn't support, they can do so via this
+/// trait.
+///
+/// # Example Implementation
+/// ```
+/// use async_trait::async_trait;
+/// use heos::channel::{ChannelBackend, ChannelState};
+/// use heos::command::raw::RawCommand;
+/// use parking_lot::Mutex;
+/// use std::sync::Arc;
+///
+/// #[derive(Debug)]
+/// struct MyChannelBackend {
+///     state: Option<Arc<Mutex<ChannelState>>>,
+/// }
+///
+/// #[async_trait]
+/// impl ChannelBackend for MyChannelBackend {
+///     async fn init(&mut self, state: Arc<Mutex<ChannelState>>) -> Result<(), std::io::Error> {
+///         // Store the state. The implementation should have some method of processing incoming
+///         // messages and giving them to this stored state.
+///         self.state = Some(state);
+///
+///         // An implementation may want to start e.g. a background task or thread here.
+///
+///         Ok(())
+///     }
+///
+///     async fn send(&mut self, command: RawCommand) -> Result<(), std::io::Error> {
+///         // Get raw bytes for a command.
+///         let bytes = command.to_string().as_bytes();
+///
+///         // Do something to send the command somewhere.
+///
+///         Ok(())
+///     }
+/// }
+/// ```
+#[async_trait]
+pub trait ChannelBackend: Debug + Send + Sync + 'static {
+    /// Initialize this backend with [ChannelState].
+    ///
+    /// The [ChannelState] should be stored, and can be used to handle incoming messages.
+    async fn init(&mut self, state: Arc<Mutex<ChannelState>>) -> IoResult<()>;
+    /// Send a [RawCommand] message.
+    async fn send(&mut self, command: RawCommand) -> IoResult<()>;
+}
+
+/// Channel state.
+///
+/// Most of the implementation of this state is internal, but users can use a mutable reference to
+/// this state to handle incoming messages via [`ChannelState::handle_response()`].
 #[derive(Educe)]
 #[educe(Debug)]
-struct ChannelState {
+pub struct ChannelState {
     current_response: Option<tokio::sync::oneshot::Sender<Option<RawResponse>>>,
     delayed_responses: HashMap<u64, Arc<Mutex<DelayedResponse>>>,
     event_broadcast: BroadcastSender<Event>,
 }
 
+impl Default for ChannelState {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            current_response: None,
+            delayed_responses: HashMap::default(),
+            event_broadcast: BroadcastSender::new(Channel::EVENT_BROADCAST_BUFFER),
+        }
+    }
+}
+
+impl ChannelState {
+    /// Handle an incoming message that has already been parsed into a [RawResponse].
+    pub fn handle_response(&mut self, response: RawResponse) {
+        if response.heos.message.starts_with("command under process") {
+            trace!(?response, "Received delay response");
+            if let Some(current_response) = self.current_response.take() {
+                let _ = current_response.send(None);
+            }
+        } else if response.heos.command.starts_with("event/") {
+            let event = match Event::try_from(response) {
+                Ok(event) => event,
+                Err(error) => {
+                    error!(?error, "Failed to parse incoming event");
+                    return
+                },
+            };
+            // We don't care if there are no receivers
+            let _ = self.event_broadcast.send(event);
+        } else {
+            if let Some(current_response) = self.current_response.take() {
+                let _ = current_response.send(Some(response));
+                return
+            }
+
+            let maybe_msg_id = match response.try_msg_id() {
+                Ok(maybe_msg_id) => maybe_msg_id,
+                Err(error) => {
+                    error!(?error, "Failed to parse incoming message ID");
+                    return
+                },
+            };
+
+            let msg_id = match maybe_msg_id {
+                Some(msg_id) => msg_id,
+                None => {
+                    warn!(?response, "Unexpected unsolicited message");
+                    return
+                }
+            };
+
+            if let Some(delayed_response) = self.delayed_responses.remove(&msg_id) {
+                let mut delayed_response = delayed_response.lock();
+                delayed_response.response = Some(response);
+                if let Some(waker) = delayed_response.waker.take() {
+                    waker.wake();
+                }
+            } else {
+                warn!(?msg_id, ?response, "Unmatched response");
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct Channel {
-    next_msg_id: AtomicU64,
-    state: Arc<Mutex<ChannelState>>,
+struct TcpRwPair {
     read_handle: tokio::task::JoinHandle<()>,
     writer: tcp::OwnedWriteHalf,
 }
 
-impl Channel {
-    pub(crate) const EVENT_BROADCAST_BUFFER: usize = 32;
-    
+/// Channel backend used for TCP connections.
+///
+/// This allows connection to a HEOS system via a direct TCP socket.
+#[derive(Debug)]
+pub struct TcpChannel {
+    socket_addr: SocketAddr,
+    rw_pair: Option<TcpRwPair>,
+}
+
+impl TcpChannel {
+    /// Create a new TCP channel.
+    ///
+    /// This method does not immediately connect to the given `socket_addr`, but will instead store
+    /// it and attempt a connection when the backend is later [initialized](ChannelBackend::init).
+    #[inline]
+    pub fn new(socket_addr: SocketAddr) -> Self {
+        Self {
+            socket_addr,
+            rw_pair: None,
+        }
+    }
+
     async fn read(reader: &mut BufReader<tcp::OwnedReadHalf>) -> Result<String, std::io::Error> {
         let mut buf = Vec::new();
         loop {
@@ -108,99 +258,96 @@ impl Channel {
                 err,
             ))
     }
+}
 
-    pub async fn connect(socket_addr: SocketAddr) -> Result<Self, std::io::Error> {
-        let stream = TcpStream::connect(socket_addr).await?;
+#[async_trait]
+impl ChannelBackend for TcpChannel {
+    async fn init(&mut self, state: Arc<Mutex<ChannelState>>) -> IoResult<()> {
+        let stream = TcpStream::connect(self.socket_addr).await?;
         let (reader, writer) = stream.into_split();
 
-        let state = Arc::new(Mutex::new(ChannelState {
-            current_response: None,
-            delayed_responses: HashMap::default(),
-            event_broadcast: BroadcastSender::new(Self::EVENT_BROADCAST_BUFFER),
-        }));
+        if let Some(rw_pair) = self.rw_pair.take() {
+            rw_pair.read_handle.abort();
+        }
 
-        let read_handle = {
-            let state = state.clone();
-            tokio::spawn(async move {
-                let mut reader = BufReader::new(reader);
-                loop {
-                    let response = match Self::read_response(&mut reader).await {
-                        Ok(response) => response,
-                        Err(error) => {
-                            error!(?error, "Failed to read incoming message");
-                            continue
-                        },
-                    };
-
-                    if response.heos.message.starts_with("command under process") {
-                        trace!(?response, "Received delay response");
-                        if let Some(current_response) = state.lock().current_response.take() {
-                            let _ = current_response.send(None);
-                        }
+        let read_handle = tokio::spawn(async move {
+            let mut reader = BufReader::new(reader);
+            loop {
+                let response = match Self::read_response(&mut reader).await {
+                    Ok(response) => response,
+                    Err(error) => {
+                        error!(?error, "Failed to read incoming message");
                         continue
-                    } else if response.heos.command.starts_with("event/") {
-                        let event = match Event::try_from(response) {
-                            Ok(event) => event,
-                            Err(error) => {
-                                error!(?error, "Failed to parse incoming event");
-                                continue
-                            },
-                        };
-                        // We don't care if there are no receivers
-                        let _ = state.lock().event_broadcast.send(event);
-                    } else {
-                        let mut state = state.lock();
+                    },
+                };
 
-                        if let Some(current_response) = state.current_response.take() {
-                            let _ = current_response.send(Some(response));
-                            continue
-                        }
+                state.lock().handle_response(response);
+            }
+        });
 
-                        let maybe_msg_id = match response.try_msg_id() {
-                            Ok(maybe_msg_id) => maybe_msg_id,
-                            Err(error) => {
-                                error!(?error, "Failed to parse incoming message ID");
-                                continue
-                            },
-                        };
-
-                        let msg_id = match maybe_msg_id {
-                            Some(msg_id) => msg_id,
-                            None => {
-                                warn!(?response, "Unexpected unsolicited message");
-                                continue
-                            }
-                        };
-
-                        if let Some(delayed_response) = state.delayed_responses.remove(&msg_id) {
-                            let mut delayed_response = delayed_response.lock();
-                            delayed_response.response = Some(response);
-                            if let Some(waker) = delayed_response.waker.take() {
-                                waker.wake();
-                            }
-                        } else {
-                            warn!(?msg_id, ?response, "Unmatched response");
-                            continue
-                        }
-                    }
-                }
-            })
-        };
-
-        Ok(Self {
-            next_msg_id: AtomicU64::new(0),
-            state,
+        self.rw_pair = Some(TcpRwPair {
             read_handle,
             writer,
+        });
+
+        Ok(())
+    }
+
+    async fn send(&mut self, command: RawCommand) -> IoResult<()> {
+        if let Some(rw_pair) = &mut self.rw_pair {
+            rw_pair.writer.write_all(command.to_string().as_bytes()).await?;
+            rw_pair.writer.write_all(b"\r\n").await?;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for TcpChannel {
+    fn drop(&mut self) {
+        if let Some(rw_pair) = self.rw_pair.take() {
+            rw_pair.read_handle.abort();
+        }
+    }
+}
+
+/// Channel for sending [commands](crate::command) and receiving [responses](crate::data::response).
+#[derive(Debug)]
+pub struct Channel {
+    backend: Box<dyn ChannelBackend>,
+    next_msg_id: AtomicU64,
+    state: Arc<Mutex<ChannelState>>,
+}
+
+impl Channel {
+    /// How many [events](Event) can be held onto before they start being dropped without being
+    /// processed.
+    ///
+    /// See [Self::subscribe_event_broadcast()] for more.
+    pub const EVENT_BROADCAST_BUFFER: usize = 32;
+
+    /// Create a new channel with the specified backend.
+    pub async fn new(backend: impl ChannelBackend) -> IoResult<Self> {
+        let mut backend: Box<dyn ChannelBackend> = Box::new(backend);
+        let next_msg_id = AtomicU64::new(0);
+        let state = Arc::new(Mutex::new(ChannelState::default()));
+
+        backend.init(state.clone()).await?;
+
+        Ok(Self {
+            backend,
+            next_msg_id,
+            state,
         })
     }
 
-    async fn write(&mut self, bytes: impl AsRef<[u8]>) -> Result<(), std::io::Error> {
-        self.writer.write_all(bytes.as_ref()).await?;
-        self.writer.write_all(b"\r\n").await
-    }
-
-    pub async fn send_raw_command(&mut self, command: RawCommand) -> Result<RawResponseFuture, std::io::Error> {
+    /// Send a [RawCommand] through this channel.
+    ///
+    /// This yields the [RawResponse] if successful.
+    ///
+    /// # Errors
+    ///
+    /// Errors if the backend has an [IO error](std::io::Error).
+    pub async fn send_raw_command(&mut self, command: RawCommand) -> Result<RawResponse, std::io::Error> {
         let mut command = command;
         let msg_id = self.next_msg_id.fetch_add(1, Ordering::Relaxed);
         command.param("SEQUENCE", msg_id.to_string());
@@ -215,7 +362,7 @@ impl Channel {
         }
 
         trace!(?command_str, "Sending command");
-        self.write(command.to_string()).await?;
+        self.backend.send(command).await?;
 
         let maybe_raw_response = rc.await
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::BrokenPipe))?;
@@ -225,27 +372,36 @@ impl Channel {
             self.state.lock().delayed_responses.remove(&msg_id);
         }
 
-        Ok(fut)
+        Ok(fut.await)
     }
 
+    /// Send a [Command] through this channel.
+    ///
+    /// This yields the [response type](Command::Response) associated with the command.
+    ///
+    /// # Errors
+    ///
+    /// Errors if the backend has an [IO error](std::io::Error), or if the [RawResponse] represents
+    /// an execution error or fails to parse into the typed response.
     pub async fn send_command<C>(&mut self, command: C) -> Result<C::Response, CommandError>
     where
         C: Command
     {
         let raw_command = RawCommand::from_command(&command)?;
-        let raw_response = self.send_raw_command(raw_command).await?.await;
+        let raw_response = self.send_raw_command(raw_command).await?;
         raw_response.validate_command()?;
         C::Response::try_from(raw_response)
     }
 
+    /// Subscribe to [change events](crate::data::event) received by this channel.
+    ///
+    /// This uses a [tokio broadcast](tokio::sync::broadcast) implementation, and has the same
+    /// restrictions. This means every subscriber needs to handle an event before it is dropped,
+    /// otherwise they will accumulate in the internal buffer. If the buffer's
+    /// [maximum capacity](Self::EVENT_BROADCAST_BUFFER) is exceeded, the oldest event will be
+    /// dropped, and any subscribers which have not handled it will never receive it.
     #[inline]
     pub fn subscribe_event_broadcast(&self) -> BroadcastReceiver<Event> {
         self.state.lock().event_broadcast.subscribe()
-    }
-}
-
-impl Drop for Channel {
-    fn drop(&mut self) {
-        self.read_handle.abort();
     }
 }

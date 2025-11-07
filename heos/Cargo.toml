@@ -12,6 +12,7 @@ readme = "../README.md"
 
 [dependencies]
 ahash = { workspace = true }
+async-trait = { workspace = true }
 educe = { workspace = true }
 parking_lot = { workspace = true }
 qstring = { workspace = true }

@@ -1682,6 +1682,7 @@ name = "heos"
 version = "0.2.2"
 dependencies = [
  "ahash",
+ "async-trait",
  "educe",
  "parking_lot",
  "qstring",
