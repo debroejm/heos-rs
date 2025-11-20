@@ -97,9 +97,9 @@ macro_rules! impl_command {
 }
 pub(in crate::command) use impl_command;
 
-/// Errors that can occur when sending commands.
+/// Error codes for when a command fails.
 #[derive(thiserror::Error, Debug)]
-pub enum CommandError {
+pub enum CommandErrorCode {
     /// The command was not recognized as a valid HEOS command.
     #[error("Command not recognized")]
     UnrecognizedCommand,
@@ -152,9 +152,17 @@ pub enum CommandError {
     #[error("Reached skip limit")]
     SkipLimit,
     /// An unknown/unrecognized error occurred.
-    #[error("Unknown error ({eid}): {text}")]
-    Unknown {
-        eid: i64,
+    #[error("Unknown error ({0})")]
+    Unknown(i64),
+}
+
+/// Errors that can occur when sending commands.
+#[derive(thiserror::Error, Debug)]
+pub enum CommandError {
+    /// The command failed.
+    #[error("Command failed; {code}: {text}")]
+    Failure {
+        code: CommandErrorCode,
         text: String,
     },
     /// The command's response was malformed and could not be parsed.
@@ -181,18 +189,18 @@ impl CommandError {
             Ok(eid) => eid,
             Err(err) => return Self::MalformedResponse(format!("Could not parse eid: {err}")),
         };
-        match eid {
-            1 => Self::UnrecognizedCommand,
-            2 => Self::InvalidId,
-            3 => Self::InvalidArguments,
-            4 => Self::DataNotAvailable,
-            5 => Self::ResourceNotAvailable,
-            6 => Self::InvalidCredentials,
-            7 => Self::CommandNotExecuted,
-            8 => Self::UserNotLoggedIn,
-            9 => Self::ParamOutOfRange,
-            10 => Self::UserNotFound,
-            11 => Self::InternalError,
+        let code = match eid {
+            1 => CommandErrorCode::UnrecognizedCommand,
+            2 => CommandErrorCode::InvalidId,
+            3 => CommandErrorCode::InvalidArguments,
+            4 => CommandErrorCode::DataNotAvailable,
+            5 => CommandErrorCode::ResourceNotAvailable,
+            6 => CommandErrorCode::InvalidCredentials,
+            7 => CommandErrorCode::CommandNotExecuted,
+            8 => CommandErrorCode::UserNotLoggedIn,
+            9 => CommandErrorCode::ParamOutOfRange,
+            10 => CommandErrorCode::UserNotFound,
+            11 => CommandErrorCode::InternalError,
             12 => {
                 let syserrno = match qs.get("syserrno") {
                     Some(syserrno) => syserrno,
@@ -202,22 +210,23 @@ impl CommandError {
                     Ok(syserrno) => syserrno,
                     Err(err) => return Self::MalformedResponse(format!("Could not parse syserrno: {err}")),
                 };
-                Self::SystemError(syserrno)
+                CommandErrorCode::SystemError(syserrno)
             },
-            13 => Self::ProcessingPreviousCommand,
-            14 => Self::CannotPlay,
-            15 => Self::NotSupported,
-            16 => Self::CommandQueueFull,
-            17 => Self::SkipLimit,
-            eid => {
-                let text = qs.get("text")
-                    .map(|t| t.to_string())
-                    .unwrap_or_default();
-                Self::Unknown {
-                    eid,
-                    text,
-                }
-            },
+            13 => CommandErrorCode::ProcessingPreviousCommand,
+            14 => CommandErrorCode::CannotPlay,
+            15 => CommandErrorCode::NotSupported,
+            16 => CommandErrorCode::CommandQueueFull,
+            17 => CommandErrorCode::SkipLimit,
+            eid => CommandErrorCode::Unknown(eid),
+        };
+
+        let text = qs.get("text")
+            .map(|t| t.to_string())
+            .unwrap_or_default();
+
+        Self::Failure {
+            code,
+            text,
         }
     }
 
