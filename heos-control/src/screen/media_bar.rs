@@ -1,7 +1,7 @@
 use egui::style::HandleShape;
 use egui::{Align, Button, Color32, Context, Direction, Frame, Image, Label, Layout, RichText, Slider, Stroke, Ui, UiBuilder};
 use egui_async::Bind;
-use heos::command::CommandError;
+use heos::command::{CommandError, CommandErrorCode};
 use heos::data::event::Event;
 use heos::data::player::{PlayState, RepeatMode, ShuffleMode};
 use heos::data::song::NowPlayingInfo;
@@ -119,7 +119,10 @@ impl ActiveData {
                             error = "no player found for ID",
                             "Failed to play/pause",
                         );
-                            return Err(CommandError::InvalidId)
+                            return Err(CommandError::Failure {
+                                code: CommandErrorCode::InvalidId,
+                                text: format!("No player found for ID ({})", snapshot.id),
+                            })
                         }
                     };
 
