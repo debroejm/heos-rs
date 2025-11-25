@@ -13,16 +13,50 @@ use crate::data::player::*;
 use crate::data::source::*;
 
 /// Retrieve all music sources.
+///
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::GetSources;
+/// use heos::data::source::SourceInfo;
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// # heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// let sources: Vec<SourceInfo> = heos.command(GetSources::default()).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Serialize, Debug, Default, Clone, Copy)]
 pub struct GetSources {}
 impl_command!(GetSources, "browse", "get_music_sources", Vec<SourceInfo>);
 
 /// Retrieve a specific music source by [ID](SourceId).
+///
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::GetSourceInfo;
+/// use heos::data::source::{SourceId, SourceInfo};
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// # heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// let source: SourceInfo = heos.command(GetSourceInfo {
+///     source_id: SourceId::HeosFavorites,
+/// }).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct GetSourceInfo {
     /// ID of the source to retrieve.
     #[serde(rename = "sid")]
-    source_id: SourceId,
+    pub source_id: SourceId,
 }
 impl_command!(GetSourceInfo, "browse", "get_source_info", SourceInfo);
 
@@ -61,6 +95,24 @@ pub struct Browse {
 impl_command!(Browse, "browse", "browse", WithOptions<Vec<SourceItem>>);
 
 /// Retrieve all valid types of search criteria for a source.
+///
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::GetSearchCriteria;
+/// use heos::data::source::{SourceId, SearchCriteria};
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// # heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// let search_criteria: Vec<SearchCriteria> = heos.command(GetSearchCriteria {
+///     source_id: SourceId::HeosFavorites,
+/// }).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct GetSearchCriteria {
     /// ID of the source to retrieve.
@@ -162,6 +214,104 @@ pub struct PlayUrl {
 impl_command!(PlayUrl, "browse", "play_stream", ());
 
 /// Add a music track to the queue.
+///
+/// # Examples
+///
+/// Play a track now, replacing the currently playing track:
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::AddToQueue;
+/// use heos::data::player::{AddToQueueType, PlayerId};
+/// use heos::data::source::SourceId;
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// heos.command(AddToQueue {
+///     player_id: PlayerId::from(42),
+///     source_id: SourceId::LocalUsbOrDlna,
+///     container_id: None,
+///     media_id: "new-song-id".to_string(),
+///     add_to_queue_type: AddToQueueType::PlayNow,
+/// }).await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Add to the front of the queue, playing after the currently playing track:
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::AddToQueue;
+/// use heos::data::player::{AddToQueueType, PlayerId};
+/// use heos::data::source::SourceId;
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// heos.command(AddToQueue {
+///     player_id: PlayerId::from(42),
+///     source_id: SourceId::LocalUsbOrDlna,
+///     container_id: None,
+///     media_id: "new-song-id".to_string(),
+///     add_to_queue_type: AddToQueueType::PlayNext,
+/// }).await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Add to the end of the queue:
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::AddToQueue;
+/// use heos::data::player::{AddToQueueType, PlayerId};
+/// use heos::data::source::SourceId;
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// heos.command(AddToQueue {
+///     player_id: PlayerId::from(42),
+///     source_id: SourceId::LocalUsbOrDlna,
+///     container_id: None,
+///     media_id: "new-song-id".to_string(),
+///     add_to_queue_type: AddToQueueType::AddToEnd,
+/// }).await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Replace the queue and the currently playing track, playing the new track instead:
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::AddToQueue;
+/// use heos::data::player::{AddToQueueType, PlayerId};
+/// use heos::data::source::SourceId;
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// heos.command(AddToQueue {
+///     player_id: PlayerId::from(42),
+///     source_id: SourceId::LocalUsbOrDlna,
+///     container_id: None,
+///     media_id: "new-song-id".to_string(),
+///     add_to_queue_type: AddToQueueType::ReplaceAndPlay,
+/// }).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Serialize, Debug, Clone)]
 pub struct AddToQueue {
     /// ID of the player to play on.
@@ -185,6 +335,26 @@ pub struct AddToQueue {
 impl_command!(AddToQueue, "browse", "add_to_queue", ());
 
 /// Rename a playlist.
+///
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::RenamePlaylist;
+/// use heos::data::source::SourceId;
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// heos.command(RenamePlaylist {
+///     source_id: SourceId::HeosPlaylists,
+///     container_id: "playlist-id".to_string(),
+///     name: "New Playlist Name".to_string(),
+/// }).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Serialize, Debug, Clone)]
 pub struct RenamePlaylist {
     /// ID of the source that contains the playlist.
@@ -199,6 +369,25 @@ pub struct RenamePlaylist {
 impl_command!(RenamePlaylist, "browse", "rename_playlist", ());
 
 /// Delete a playlist.
+///
+/// ```
+/// # use heos::ConnectError;
+/// use heos::HeosConnection;
+/// use heos::command::browse::DeletePlaylist;
+/// use heos::data::source::SourceId;
+/// use std::time::Duration;
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> Result<(), ConnectError> {
+/// heos::install_doctest_handler();
+/// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
+/// heos.command(DeletePlaylist {
+///     source_id: SourceId::HeosPlaylists,
+///     container_id: "playlist-id".to_string(),
+/// }).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Serialize, Debug, Clone)]
 pub struct DeletePlaylist {
     /// ID of the source that contains the playlist.
