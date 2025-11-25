@@ -102,12 +102,18 @@ use crate::command::{Command, CommandError};
 use crate::data::event::Event;
 use crate::data::response::RawResponse;
 use crate::data::system::ChangeEventsEnabled;
+use crate::doctest::try_doctest_channel;
 use crate::state::State;
 
 pub mod channel;
 pub mod command;
 pub mod data;
+mod doctest;
+pub mod mock;
 pub mod state;
+
+#[doc(hidden)]
+pub use doctest::install_doctest_handler;
 
 /// Inner state for a [HeosConnection] object that has been created but not connected.
 ///
@@ -224,9 +230,13 @@ impl HeosConnection<Created> {
     pub async fn connect_any(
         timeout: Duration,
     ) -> Result<HeosConnection<AdHoc>, ConnectError> {
-        Self::scan(timeout).await?
-            .next().await.ok_or(ConnectError::NoDevicesFound)?
-            .connect().await
+        if let Some(doctest_channel) = try_doctest_channel() {
+            Ok(HeosConnection::from_channel(Channel::new(doctest_channel).await?).await?)
+        } else {
+            Self::scan(timeout).await?
+                .next().await.ok_or(ConnectError::NoDevicesFound)?
+                .connect().await
+        }
     }
 
     /// The IP address of this possible connection.

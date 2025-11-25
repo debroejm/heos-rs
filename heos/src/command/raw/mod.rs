@@ -4,6 +4,7 @@
 //! serialized into a pure string. See [RawCommand] for more.
 
 use ahash::HashMap;
+use educe::Educe;
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
 
@@ -13,6 +14,30 @@ use crate::command::Command;
 mod ser;
 
 pub use ser::Error as SerializeError;
+
+/// Wrapper around a [HashMap] of parameters.
+///
+/// This wrapper exists to create a custom [Display] implementation that formats parameters as a
+/// query string, but otherwise is intended to be transparent.
+#[derive(Debug, Educe, Clone)]
+#[educe(Deref, DerefMut)]
+pub struct Params(HashMap<String, String>);
+
+impl Display for Params {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        for (attribute, value) in &self.0 {
+            // TODO: Escape special characters
+            if first {
+                write!(f, "{attribute}={value}")?;
+            } else {
+                write!(f, "&{attribute}={value}")?;
+            }
+            first = false;
+        }
+        Ok(())
+    }
+}
 
 /// Raw untyped command.
 ///
@@ -52,7 +77,7 @@ pub use ser::Error as SerializeError;
 pub struct RawCommand {
     group: String,
     command: String,
-    params: HashMap<String, String>,
+    params: Params,
 }
 
 impl RawCommand {
@@ -71,7 +96,7 @@ impl RawCommand {
         Self {
             group: group.into(),
             command: command.into(),
-            params: HashMap::default(),
+            params: Params(HashMap::default()),
         }
     }
 
@@ -99,7 +124,7 @@ impl RawCommand {
         Self {
             group: group.into(),
             command: command.into(),
-            params,
+            params: Params(params),
         }
     }
 
@@ -139,20 +164,31 @@ impl RawCommand {
     pub fn from_command<C: Command + Serialize>(cmd: &C) -> Result<Self, SerializeError> {
         to_raw_command(cmd)
     }
+
+    /// This command's group.
+    #[inline]
+    pub fn group(&self) -> &str {
+        &self.group
+    }
+
+    /// This command's name.
+    #[inline]
+    pub fn name(&self) -> &str {
+        &self.command
+    }
+
+    /// This command's parameters.
+    #[inline]
+    pub fn params(&self) -> &Params {
+        &self.params
+    }
 }
 
 impl Display for RawCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "heos://{}/{}", &self.group, &self.command)?;
-        let mut first = true;
-        for (attribute, value) in &self.params {
-            // TODO: Escape special characters
-            if first {
-                write!(f, "?{attribute}={value}")?;
-            } else {
-                write!(f, "&{attribute}={value}")?;
-            }
-            first = false;
+        if !self.params.is_empty() {
+            write!(f, "?{}", &self.params)?;
         }
         Ok(())
     }

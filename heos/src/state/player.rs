@@ -12,7 +12,7 @@ use url::Url;
 use crate::channel::Channel;
 use crate::command::browse::*;
 use crate::command::player::*;
-use crate::command::CommandError;
+use crate::command::{CommandError, CommandErrorCode};
 use crate::data::common::*;
 use crate::data::event::PlayerNowPlayingProgress;
 use crate::data::player::*;
@@ -40,6 +40,18 @@ pub struct NowPlayingProgress {
 }
 
 impl NowPlayingProgress {
+    /// Create a new progress data struct.
+    /// 
+    /// This is intended primarily for testing purposes, and serves no useful purpose beyond that.
+    #[inline]
+    pub fn new(duration: Duration) -> Self {
+        Self {
+            elapsed: Duration::from_secs(0),
+            duration,
+            baseline: None,
+        }
+    }
+    
     /// Calculate an interpolated elapsed time based on the last received
     /// [PlayerNowPlayingProgress](crate::data::event::Event::PlayerNowPlayingProgress) event.
     ///
@@ -555,7 +567,10 @@ impl<'a> Queue<'a> {
                     queue_id: song.queue_id,
                 }).await
         } else {
-            Err(CommandError::ParamOutOfRange)
+            Err(CommandError::Failure {
+                code: CommandErrorCode::ParamOutOfRange,
+                text: format!("{idx} >= {}", queue.len())
+            })
         }
     }
 
@@ -573,7 +588,10 @@ impl<'a> Queue<'a> {
                     queue_ids: vec![song.queue_id],
                 }).await
         } else {
-            Err(CommandError::ParamOutOfRange)
+            Err(CommandError::Failure {
+                code: CommandErrorCode::ParamOutOfRange,
+                text: format!("{idx} >= {}", queue.len())
+            })
         }
     }
 
