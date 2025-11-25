@@ -120,15 +120,15 @@ impl<'a> Source<'a> {
     pub async fn search(
         &self,
         search: impl Into<String>,
-        criteria: impl Into<String>,
+        criteria: CriteriaId,
     ) -> Result<WithOptions<Vec<SourceItem>>, CommandError> {
-        self.search_impl(search.into(), criteria.into()).await
+        self.search_impl(search.into(), criteria).await
     }
 
     async fn search_impl(
         &self,
         search: String,
-        criteria: String,
+        criteria: CriteriaId,
     ) -> Result<WithOptions<Vec<SourceItem>>, CommandError> {
         let mut all_items = vec![];
         let mut options = vec![];
@@ -137,7 +137,7 @@ impl<'a> Source<'a> {
                 .send_command(Search {
                     source_id: self.data.info.source_id,
                     search: search.clone(),
-                    criteria: criteria.clone(),
+                    criteria,
                     range: None,
                 }).await?;
 

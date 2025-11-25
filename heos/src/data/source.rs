@@ -23,6 +23,7 @@
 
 use educe::Educe;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Debug, Formatter};
 use std::str::FromStr;
 use strum::EnumString;
 use url::Url;
@@ -32,12 +33,164 @@ use crate::command::CommandError;
 use crate::data::option::impl_has_options;
 use crate::data::response::RawResponse;
 
-// TODO: Turn this into an enum?
-id_type! {
-    /// ID representing a specific music source.
-    ///
-    /// These IDs are globally static, and pre-set per source.
-    pub struct SourceId(pub i64);
+#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(from = "i64", into = "i64")]
+pub enum SourceId {
+    Pandora,
+    Rhapsody,
+    TuneIn,
+    Spotify,
+    Deezer,
+    Napster,
+    IHeartRadio,
+    SiriusXm,
+    Soundcloud,
+    Tidal,
+    AmazonMusic,
+    Moodmix,
+    QQMusic,
+    Qobuz,
+    LocalUsbOrDlna,
+    HeosPlaylists,
+    HeosHistory,
+    HeosAuxInputs,
+    HeosFavorites,
+    Unknown(i64),
+}
+
+impl Debug for SourceId {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SourceId({:?})", i64::from(*self))
+    }
+}
+
+impl Display for SourceId {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&i64::from(*self), f)
+    }
+}
+
+impl From<i64> for SourceId {
+    #[inline]
+    fn from(value: i64) -> Self {
+        match value {
+            1 => Self::Pandora,
+            2 => Self::Rhapsody,
+            3 => Self::TuneIn,
+            4 => Self::Spotify,
+            5 => Self::Deezer,
+            6 => Self::Napster,
+            7 => Self::IHeartRadio,
+            8 => Self::SiriusXm,
+            9 => Self::Soundcloud,
+            10 => Self::Tidal,
+            13 => Self::AmazonMusic,
+            15 => Self::Moodmix,
+            18 => Self::QQMusic,
+            30 => Self::Qobuz,
+            1024 => Self::LocalUsbOrDlna,
+            1025 => Self::HeosPlaylists,
+            1026 => Self::HeosHistory,
+            1027 => Self::HeosAuxInputs,
+            1028 => Self::HeosFavorites,
+            value => Self::Unknown(value),
+        }
+    }
+}
+
+impl From<SourceId> for i64 {
+    #[inline]
+    fn from(value: SourceId) -> Self {
+        match value {
+            SourceId::Pandora => 1,
+            SourceId::Rhapsody => 2,
+            SourceId::TuneIn => 3,
+            SourceId::Spotify => 4,
+            SourceId::Deezer => 5,
+            SourceId::Napster => 6,
+            SourceId::IHeartRadio => 7,
+            SourceId::SiriusXm => 8,
+            SourceId::Soundcloud => 9,
+            SourceId::Tidal => 10,
+            SourceId::AmazonMusic => 13,
+            SourceId::Moodmix => 15,
+            SourceId::QQMusic => 18,
+            SourceId::Qobuz => 30,
+            SourceId::LocalUsbOrDlna => 1024,
+            SourceId::HeosPlaylists => 1025,
+            SourceId::HeosHistory => 1026,
+            SourceId::HeosAuxInputs => 1027,
+            SourceId::HeosFavorites => 1028,
+            SourceId::Unknown(value) => value,
+        }
+    }
+}
+
+impl FromStr for SourceId {
+    type Err = ParseIntError;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value: i64 = s.parse()?;
+        Ok(value.into())
+    }
+}
+
+impl SourceId {
+    #[inline]
+    pub fn cli_browse(&self) -> bool {
+        match self {
+            Self::Pandora |
+            Self::Rhapsody |
+            Self::TuneIn |
+            Self::Deezer |
+            Self::Napster |
+            Self::IHeartRadio |
+            Self::SiriusXm |
+            Self::Soundcloud |
+            Self::Tidal |
+            Self::AmazonMusic |
+            Self::LocalUsbOrDlna |
+            Self::HeosPlaylists |
+            Self::HeosHistory |
+            Self::HeosAuxInputs |
+            Self::HeosFavorites => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn cli_search(&self) -> bool {
+        match self {
+            Self::Rhapsody |
+            Self::TuneIn |
+            Self::Deezer |
+            Self::Napster |
+            Self::Soundcloud |
+            Self::Tidal |
+            Self::Qobuz |
+            Self::LocalUsbOrDlna |
+            Self::HeosFavorites => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
+    pub fn cli_new_station(&self) -> bool {
+        match self {
+            Self::Pandora |
+            Self::Rhapsody |
+            Self::TuneIn |
+            Self::Deezer |
+            Self::Napster |
+            Self::IHeartRadio |
+            Self::Soundcloud |
+            Self::Tidal => true,
+            _ => false,
+        }
+    }
 }
 
 /// Broad category that a source belongs to.
@@ -72,7 +225,7 @@ pub enum SourceAvailable {
 impl_enum_string_conversions!(SourceAvailable);
 
 /// Information about a specific music source.
-#[derive(Deserialize, Educe)]
+#[derive(Serialize, Deserialize, Educe, Clone)]
 #[educe(Debug)]
 pub struct SourceInfo {
     /// Name of the source.
@@ -90,6 +243,7 @@ pub struct SourceInfo {
     pub available: SourceAvailable,
     /// Username associated with the source, if the source is a music service and there is an
     /// account logged-in with the music service.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub service_username: Option<String>,
 }
 impl_try_from_response_payload!(SourceInfo);
@@ -238,13 +392,82 @@ pub enum SourceItem {
 impl_has_options!(Vec<SourceItem>, "browse");
 impl_try_from_response_payload!(Vec<SourceItem>);
 
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(from = "i64", into = "i64")]
+pub enum CriteriaId {
+    Artist,
+    Album,
+    Track,
+    Station,
+    Shows,
+    Playlist,
+    Accounts,
+    Unknown(i64),
+}
+
+impl Debug for CriteriaId {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CriteriaId({:?})", i64::from(*self))
+    }
+}
+
+impl Display for CriteriaId {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&i64::from(*self), f)
+    }
+}
+
+impl From<i64> for CriteriaId {
+    #[inline]
+    fn from(value: i64) -> Self {
+        match value {
+            1 => Self::Artist,
+            2 => Self::Album,
+            3 => Self::Track,
+            4 => Self::Station,
+            5 => Self::Shows,
+            6 => Self::Playlist,
+            7 => Self::Accounts,
+            value => Self::Unknown(value),
+        }
+    }
+}
+
+impl From<CriteriaId> for i64 {
+    #[inline]
+    fn from(value: CriteriaId) -> Self {
+        match value {
+            CriteriaId::Artist => 1,
+            CriteriaId::Album => 2,
+            CriteriaId::Track => 3,
+            CriteriaId::Station => 4,
+            CriteriaId::Shows => 5,
+            CriteriaId::Playlist => 6,
+            CriteriaId::Accounts => 7,
+            CriteriaId::Unknown(value) => value,
+        }
+    }
+}
+
+impl FromStr for CriteriaId {
+    type Err = ParseIntError;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value: i64 = s.parse()?;
+        Ok(value.into())
+    }
+}
+
 /// Criteria to use to search by.
 ///
 /// This is used by some services when searching in order to determine what media types are being
 /// searched. The `name` corresponds to the type of media, and the `criteria` is the media type ID.
 /// For example, if a search criteria result has the name "Artist", then the `criteria` can be used
 /// with [Search](crate::command::browse::Search) commands to search for artists.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SearchCriteria {
     /// Name of the criteria.
     ///
@@ -253,23 +476,19 @@ pub struct SearchCriteria {
     /// ID to be used with [Search](crate::command::browse::Search) commands to search for this
     /// media type.
     #[serde(rename = "scid")]
-    pub criteria: String,
+    pub criteria: CriteriaId,
     /// Do searches of this type support wildcards ('*').
-    ///
-    /// If this is `None`, assume `false`.
-    // TODO: Change this to just be `false` when it is `None`
-    #[serde(deserialize_with = "super::maybe_yes_no::deserialize")]
-    pub wildcard: Option<bool>,
+    #[serde(default)]
+    #[serde(with = "super::yes_no")]
+    pub wildcard: bool,
     /// Are searches of this type directly playable by adding the search results to the queue.
-    ///
-    /// If this is `None`, assume `false`.
-    // TODO: Change this to just be `false` when it is `None`
-    #[serde(deserialize_with = "super::maybe_yes_no::deserialize")]
-    pub playable: Option<bool>,
+    #[serde(default)]
+    #[serde(with = "super::yes_no")]
+    pub playable: bool,
     /// If present, this should be prefixed to search strings when searching for media of this type.
-    // TODO: Change the name of this field, as it's not actually a container_id
     #[serde(rename = "cid")]
-    pub container_id: Option<String>,
+    #[serde(default)]
+    pub search_prefix: Option<String>,
 }
 impl_try_from_response_payload!(Vec<SearchCriteria>);
 

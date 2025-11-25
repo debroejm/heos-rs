@@ -79,7 +79,7 @@ pub struct Search {
     pub search: String,
     /// Search criteria ID yielded by [GetSearchCriteria].
     #[serde(rename = "scid")]
-    pub criteria: String,
+    pub criteria: CriteriaId,
     /// Range of results to retrieve.
     ///
     /// Zero-indexed.
