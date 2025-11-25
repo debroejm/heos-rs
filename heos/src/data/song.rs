@@ -2,7 +2,7 @@
 // TODO: Rename this module to 'queue'
 
 use educe::Educe;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::*;
@@ -15,7 +15,7 @@ id_type! {
 }
 
 /// Information about a specific song in the queue.
-#[derive(Deserialize, Educe, Clone)]
+#[derive(Deserialize, Serialize, Educe, Clone)]
 #[educe(Debug)]
 pub struct SongInfo {
     /// Name of the song.
@@ -31,7 +31,7 @@ pub struct SongInfo {
     /// If this is `None`, the album art can be retrieved via the
     /// [GetAlbumMetadata](crate::command::browse::GetAlbumMetadata) command.
     #[educe(Debug(method(super::maybe_url::fmt)))]
-    #[serde(deserialize_with = "super::maybe_url::deserialize")]
+    #[serde(with = "super::maybe_url")]
     pub image_url: Option<Url>,
     /// ID representing this song across all media.
     #[serde(rename = "mid")]
@@ -40,13 +40,14 @@ pub struct SongInfo {
     #[serde(rename = "qid")]
     pub queue_id: QueueId,
     /// ID of the album this song is from, if it belongs to an album.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub album_id: Option<String>,
 }
 impl_try_from_response_payload!(SongInfo);
 impl_try_from_response_payload!(Vec<SongInfo>);
 
 /// Information about the currently playing media.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum NowPlayingInfo {
     /// The currently playing media is a song.

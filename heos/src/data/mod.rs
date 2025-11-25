@@ -47,6 +47,16 @@ macro_rules! id_type {
                 Self(value)
             }
         }
+
+        impl core::str::FromStr for $type_name {
+            type Err = core::num::ParseIntError;
+
+            #[inline]
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                let value: $inner_type = s.parse()?;
+                Ok(Self(value))
+            }
+        }
     };
 }
 pub(in crate::data) use id_type;
@@ -78,7 +88,7 @@ macro_rules! bounded_number_type {
     ) => {
         $(#[$attr])*
         #[repr(transparent)]
-        #[derive(serde::Serialize, serde::Deserialize, educe::Educe, Clone, Copy, PartialEq, Eq)]
+        #[derive(serde::Serialize, serde::Deserialize, educe::Educe, Clone, Copy, PartialEq, Eq, Hash)]
         #[serde(transparent)]
         #[educe(Deref)]
         $v struct $type_name($subtype);
@@ -262,7 +272,7 @@ pub(crate) mod maybe_range {
 }
 
 mod maybe_url {
-    use serde::{Deserialize, Deserializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::fmt;
     use std::fmt::{Display, Formatter};
     use url::Url;
@@ -271,6 +281,13 @@ mod maybe_url {
         match url {
             Some(url) => Display::fmt(url, f),
             None => write!(f, ""),
+        }
+    }
+
+    pub fn serialize<S: Serializer>(maybe_url: &Option<Url>, s: S) -> Result<S::Ok, S::Error> {
+        match maybe_url {
+            Some(url) => url.serialize(s),
+            None => "".serialize(s),
         }
     }
 
@@ -287,29 +304,20 @@ mod maybe_url {
 }
 
 mod yes_no {
-    use serde::{Deserialize, Deserializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(yes_no: &bool, s: S) -> Result<S::Ok, S::Error> {
+        match yes_no {
+            true => "yes".serialize(s),
+            false => "no".serialize(s),
+        }
+    }
 
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
         let yes_no_str = String::deserialize(d)?;
         match yes_no_str.as_str() {
             "yes" => Ok(true),
             "no" => Ok(false),
-            unknown => Err(serde::de::Error::custom(format!("unknown yes/no value: '{unknown}'"))),
-        }
-    }
-}
-
-mod maybe_yes_no {
-    use serde::{Deserialize, Deserializer};
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<bool>, D::Error> {
-        let yes_no_str = match Option::<String>::deserialize(d)? {
-            Some(yes_no_str) => yes_no_str,
-            None => return Ok(None),
-        };
-        match yes_no_str.as_str() {
-            "yes" => Ok(Some(true)),
-            "no" => Ok(Some(false)),
             unknown => Err(serde::de::Error::custom(format!("unknown yes/no value: '{unknown}'"))),
         }
     }

@@ -36,7 +36,7 @@ pub enum GroupRole {
 impl_enum_string_conversions!(GroupRole);
 
 /// Information about a player that is participating in a group.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GroupPlayer {
     /// The user-friendly name of the player.
     pub name: String,
@@ -48,7 +48,7 @@ pub struct GroupPlayer {
 }
 
 /// Information about a specific group.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GroupInfo {
     /// The user-friendly name of the group.
     pub name: String,

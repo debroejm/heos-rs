@@ -20,6 +20,7 @@ id_type! {
     /// opaque.
     pub struct PlayerId(pub i64);
 }
+impl_try_from_qs!(PlayerId, "pid");
 
 /// The method a player is connected to the local network with.
 #[derive(Serialize, Deserialize, EnumString, strum::Display, Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,8 +37,8 @@ pub enum NetworkType {
 impl_enum_string_conversions!(NetworkType);
 
 /// How the LineOut level is controlled.
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(try_from = "i64")]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(try_from = "i64", into = "i64")]
 pub enum LineOutLevelType {
     /// There is no LineOut connection.
     None,
@@ -61,9 +62,20 @@ impl TryFrom<i64> for LineOutLevelType {
     }
 }
 
+impl From<LineOutLevelType> for i64 {
+    #[inline]
+    fn from(value: LineOutLevelType) -> Self {
+        match value {
+            LineOutLevelType::None => 0,
+            LineOutLevelType::Variable => 1,
+            LineOutLevelType::Fixed => 2,
+        }
+    }
+}
+
 /// How the LineOut connection is controlled for [fixed](LineOutLevelType::Fixed) types.
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(try_from = "i64")]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(try_from = "i64", into = "i64")]
 pub enum LineOutLevelControlType {
     /// There is no LineOut connection.
     None,
@@ -90,8 +102,20 @@ impl TryFrom<i64> for LineOutLevelControlType {
     }
 }
 
+impl From<LineOutLevelControlType> for i64 {
+    #[inline]
+    fn from(value: LineOutLevelControlType) -> Self {
+        match value {
+            LineOutLevelControlType::None => 1,
+            LineOutLevelControlType::IR => 2,
+            LineOutLevelControlType::Trigger => 3,
+            LineOutLevelControlType::Network => 4,
+        }
+    }
+}
+
 /// Information about a specific player.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PlayerInfo {
     /// The user-friendly name of the player.
     pub name: String,
@@ -216,8 +240,8 @@ pub struct UpdatePayload {
 impl_try_from_response_payload!(UpdatePayload);
 
 /// The method that is used to add new media to the queue.
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(into = "i64")]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(into = "i64", try_from = "i64")]
 pub enum AddToQueueType {
     /// The new media will replace the currently playing track.
     PlayNow,
@@ -229,6 +253,28 @@ pub enum AddToQueueType {
     ReplaceAndPlay,
 }
 
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum AddToQueueTypeParseError {
+    #[error("unknown type id '{0}'")]
+    UnknownId(i64),
+    #[error(transparent)]
+    ParseIntError(#[from] ParseIntError),
+}
+
+impl TryFrom<i64> for AddToQueueType {
+    type Error = AddToQueueTypeParseError;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(AddToQueueType::PlayNow),
+            2 => Ok(AddToQueueType::PlayNext),
+            3 => Ok(AddToQueueType::AddToEnd),
+            4 => Ok(AddToQueueType::ReplaceAndPlay),
+            value => Err(AddToQueueTypeParseError::UnknownId(value)),
+        }
+    }
+}
+
 impl From<AddToQueueType> for i64 {
     #[inline]
     fn from(value: AddToQueueType) -> Self {
@@ -238,5 +284,16 @@ impl From<AddToQueueType> for i64 {
             AddToQueueType::AddToEnd => 3,
             AddToQueueType::ReplaceAndPlay => 4,
         }
+    }
+}
+
+impl FromStr for AddToQueueType {
+    type Err = AddToQueueTypeParseError;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value: i64 = s.parse()?;
+        let aid = Self::try_from(value)?;
+        Ok(aid)
     }
 }

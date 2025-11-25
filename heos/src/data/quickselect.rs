@@ -2,20 +2,19 @@
 //!
 //! QuickSelect is limited to certain HEOS devices, and allows easily playing a saved preset.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::*;
 
-// TODO: limit to 1..6?
-id_type! {
+bounded_number_type! {
     /// ID representing a QuickSelect slot.
     ///
     /// This is limited to the range `1..=6`.
-    pub struct QuickSelectId(pub i64);
+    pub struct QuickSelectId(i64, 1..=6);
 }
 
 /// Information about a specific QuickSelect slot.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct QuickSelect {
     /// ID of the QuickSelect slot.
     pub id: QuickSelectId,
