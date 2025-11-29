@@ -24,9 +24,9 @@ fn deserialize_result<'de, D: Deserializer<'de>>(d: D) -> Result<Option<bool>, D
 pub struct RawResponseHeos {
     /// The full command that produced this response.
     ///
-    /// For commands, this will be of the format "<group>/<command>".
+    /// For commands, this will be of the format "\<group\>/\<command\>".
     ///
-    /// For events, this will be of the format "event/<event>".
+    /// For events, this will be of the format "event/\<event\>".
     pub command: String,
     /// Whether this command was successful (`true`) or not (`false`).
     #[serde(default, deserialize_with = "deserialize_result")]

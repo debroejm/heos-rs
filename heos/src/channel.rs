@@ -125,6 +125,15 @@ pub trait ChannelBackend: Debug + Send + Sync + 'static {
     async fn send(&mut self, command: RawCommand) -> IoResult<()>;
 }
 
+#[derive(Educe)]
+#[educe(Debug, Default)]
+struct ResponseCache {
+    #[educe(Debug(ignore))]
+    current: Option<tokio::sync::oneshot::Sender<Option<RawResponse>>>,
+    delayed: HashMap<u64, Arc<Mutex<DelayedResponse>>>,
+    last_delayed: Option<(u64, Arc<Mutex<DelayedResponse>>)>,
+}
+
 /// Channel state.
 ///
 /// Most of the implementation of this state is internal, but users can use a mutable reference to
@@ -132,8 +141,7 @@ pub trait ChannelBackend: Debug + Send + Sync + 'static {
 #[derive(Educe)]
 #[educe(Debug)]
 pub struct ChannelState {
-    current_response: Option<tokio::sync::oneshot::Sender<Option<RawResponse>>>,
-    delayed_responses: HashMap<u64, Arc<Mutex<DelayedResponse>>>,
+    response_caches: HashMap<String, ResponseCache>,
     event_broadcast: BroadcastSender<Event>,
 }
 
@@ -141,8 +149,7 @@ impl Default for ChannelState {
     #[inline]
     fn default() -> Self {
         Self {
-            current_response: None,
-            delayed_responses: HashMap::default(),
+            response_caches: HashMap::default(),
             event_broadcast: BroadcastSender::new(Channel::EVENT_BROADCAST_BUFFER),
         }
     }
@@ -151,10 +158,13 @@ impl Default for ChannelState {
 impl ChannelState {
     /// Handle an incoming message that has already been parsed into a [RawResponse].
     pub fn handle_response(&mut self, response: RawResponse) {
+
         if response.heos.message.starts_with("command under process") {
             trace!(?response, "Received delay response");
-            if let Some(current_response) = self.current_response.take() {
-                let _ = current_response.send(None);
+            if let Some(response_cache) = self.response_caches.get_mut(&response.heos.command) {
+                if let Some(current_response) = response_cache.current.take() {
+                    let _ = current_response.send(None);
+                }
             }
         } else if response.heos.command.starts_with("event/") {
             let event = match Event::try_from(response) {
@@ -167,7 +177,15 @@ impl ChannelState {
             // We don't care if there are no receivers
             let _ = self.event_broadcast.send(event);
         } else {
-            if let Some(current_response) = self.current_response.take() {
+            let response_cache = match self.response_caches.get_mut(&response.heos.command) {
+                Some(response_cache) => response_cache,
+                None => {
+                    warn!(command = ?&response.heos.command, ?response, "Unexpected command response");
+                    return
+                },
+            };
+
+            if let Some(current_response) = response_cache.current.take() {
                 let _ = current_response.send(Some(response));
                 return
             }
@@ -180,22 +198,28 @@ impl ChannelState {
                 },
             };
 
-            let msg_id = match maybe_msg_id {
-                Some(msg_id) => msg_id,
-                None => {
-                    warn!(?response, "Unexpected unsolicited message");
-                    return
-                }
-            };
-
-            if let Some(delayed_response) = self.delayed_responses.remove(&msg_id) {
-                let mut delayed_response = delayed_response.lock();
-                delayed_response.response = Some(response);
-                if let Some(waker) = delayed_response.waker.take() {
-                    waker.wake();
+            if let Some(msg_id) = maybe_msg_id {
+                if let Some(delayed_response) = response_cache.delayed.remove(&msg_id) {
+                    let mut delayed_response = delayed_response.lock();
+                    delayed_response.response = Some(response);
+                    if let Some(waker) = delayed_response.waker.take() {
+                        waker.wake();
+                    }
+                    if let Some((cached_msg_id, _)) = &response_cache.last_delayed && *cached_msg_id == msg_id {
+                        response_cache.last_delayed = None;
+                    }
+                } else {
+                    warn!(?msg_id, ?response, "Unmatched response");
                 }
             } else {
-                warn!(?msg_id, ?response, "Unmatched response");
+                if let Some((cached_msg_id, delayed_response)) = response_cache.last_delayed.take() {
+                    let mut delayed_response = delayed_response.lock();
+                    delayed_response.response = Some(response);
+                    if let Some(waker) = delayed_response.waker.take() {
+                        waker.wake();
+                    }
+                    response_cache.delayed.remove(&cached_msg_id);
+                }
             }
         }
     }
@@ -351,14 +375,17 @@ impl Channel {
         let mut command = command;
         let msg_id = self.next_msg_id.fetch_add(1, Ordering::Relaxed);
         command.param("SEQUENCE", msg_id.to_string());
+        let command_id = command.command();
         let command_str = command.to_string();
 
         let fut = RawResponseFuture::new();
         let (tx, rc) = tokio::sync::oneshot::channel();
         {
             let mut state = self.state.lock();
-            state.current_response = Some(tx);
-            state.delayed_responses.insert(msg_id, fut.inner.clone());
+            let response_cache = state.response_caches.entry(command_id.clone()).or_default();
+            response_cache.current = Some(tx);
+            response_cache.delayed.insert(msg_id, fut.inner.clone());
+            response_cache.last_delayed = Some((msg_id, fut.inner.clone()));
         }
 
         trace!(?command_str, "Sending command");
@@ -369,7 +396,15 @@ impl Channel {
 
         if let Some(raw_response) = maybe_raw_response {
             fut.inner.lock().response = Some(raw_response);
-            self.state.lock().delayed_responses.remove(&msg_id);
+            {
+                let mut state = self.state.lock();
+                if let Some(response_cache) = state.response_caches.get_mut(&command_id) {
+                    response_cache.delayed.remove(&msg_id);
+                    if let Some((cached_msg_id, _)) = &response_cache.last_delayed && *cached_msg_id == msg_id {
+                        response_cache.last_delayed = None;
+                    }
+                }
+            }
         }
 
         Ok(fut.await)
