@@ -60,3 +60,31 @@ pub struct GroupInfo {
 }
 impl_try_from_response_payload!(GroupInfo);
 impl_try_from_response_payload!(Vec<GroupInfo>);
+
+impl GroupInfo {
+    /// Get the group's leader.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no group member is designated as the leader, which should _not_ occur.
+    pub fn leader(&self) -> &GroupPlayer {
+        for player in &self.players {
+            if player.role == GroupRole::Leader {
+                return player
+            }
+        }
+        panic!("every group should have a leader")
+    }
+
+    /// Retrieve a player from the group by ID.
+    ///
+    /// If no player exists in the group with the specified ID, yields `None`.
+    pub fn player(&self, player_id: PlayerId) -> Option<&GroupPlayer> {
+        for player in &self.players {
+            if player.player_id == player_id {
+                return Some(player)
+            }
+        }
+        None
+    }
+}
