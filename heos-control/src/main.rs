@@ -13,6 +13,7 @@ use crate::screen::media_bar::MediaBar;
 mod screen;
 mod assets;
 mod util;
+mod widgets;
 
 fn main() -> eframe::Result {
     tracing_subscriber::fmt()

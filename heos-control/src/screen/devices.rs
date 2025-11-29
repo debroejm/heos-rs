@@ -1,17 +1,219 @@
-use egui::{Context, CursorIcon, Grid, Label, ScrollArea, Sense, TextStyle, Ui};
+use eframe::epaint::text::TextWrapMode;
+use egui::{Context, FontSelection, Frame, Grid, Label, Layout, Response, RichText, ScrollArea, Sense, TextStyle, Ui, UiBuilder, Widget, WidgetText};
 use egui_async::Bind;
+use emath::Align;
+use heos::command::group::SetGroup;
+use heos::command::CommandError;
 use heos::data::event::Event;
-use heos::state::playable::{PlayableId, PlayableInfo, PlayableSnapshot};
+use heos::data::group::{GroupPlayer, GroupRole};
+use heos::data::player::PlayerId;
+use heos::data::song::NowPlayingInfo;
+use heos::state::playable::{Playable, PlayableId, PlayableInfo, PlayableSnapshot};
 use heos::{HeosConnection, Stateful};
 use parking_lot::Mutex;
 use std::convert::Infallible;
+use std::iter;
 use std::sync::Arc;
+use tracing::debug;
 
 use crate::util::Updater;
+use crate::widgets::MediaDisplay;
+
+pub struct SubDevice<'a> {
+    player: &'a GroupPlayer,
+}
+
+impl<'a> SubDevice<'a> {
+    pub fn new(player: &'a GroupPlayer) -> Self {
+        Self {
+            player,
+        }
+    }
+}
+
+impl<'a> Widget for SubDevice<'a> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let margin = 8.0;
+
+        let mut frame = Frame::NONE
+            .inner_margin(margin)
+            .corner_radius(8.0)
+            .begin(ui);
+
+        let available_width = frame.content_ui.available_width();
+        let galley = WidgetText::from(RichText::new(&self.player.name).heading()).into_galley(
+            &mut frame.content_ui,
+            None,
+            available_width,
+            FontSelection::Default,
+        );
+
+        let inner_response = frame.content_ui.scope_builder(
+            UiBuilder::new().sense(Sense::drag() | Sense::hover()),
+            |ui| {
+                ui.add(Label::new(galley).selectable(false))
+            }
+        ).response;
+        let response = frame.allocate_space(ui);
+        if response.hovered() {
+            frame.frame.fill = ui.style().visuals.selection.bg_fill;
+        } else {
+            frame.frame.fill = ui.style().visuals.panel_fill + ui.style().visuals.faint_bg_color.gamma_multiply(4.0);
+        }
+        frame.paint(ui);
+        response | inner_response
+    }
+}
+
+pub struct Device<'a> {
+    idx: usize,
+    playable: &'a PlayableSnapshot,
+}
+
+impl<'a> Device<'a> {
+    const HEIGHT: f32 = 80.0;
+
+    pub fn new(idx: usize, playable: &'a PlayableSnapshot) -> Self {
+        Self {
+            idx,
+            playable,
+        }
+    }
+
+    fn ui_left(&self, ui: &mut Ui) -> bool {
+        if let PlayableInfo::Group(group) = &self.playable.info {
+            let response = group.players.iter()
+                .map(|player| {
+                    let response = ui.add(SubDevice::new(player));
+                    response.dnd_set_drag_payload(player.player_id);
+                    response
+                })
+                .reduce(|a, b| a | b);
+            match response {
+                Some(response) => response.hovered(),
+                None => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    fn ui_right(&self, ui: &mut Ui) {
+        let track_info = match &self.playable.now_playing.info {
+            NowPlayingInfo::Station { info, .. } |
+            NowPlayingInfo::Song { info, .. } => info,
+        };
+        ui.add(MediaDisplay::new(track_info));
+    }
+}
+
+impl<'a> Widget for Device<'a> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let margin = 8.0;
+        let mut frame = Frame::NONE
+            .inner_margin(margin)
+            .corner_radius(6.0)
+            .begin(ui);
+        let inner = frame.content_ui.scope_builder(
+            UiBuilder::new()
+                .layout(
+                    Layout::top_down(Align::Min)
+                        .with_cross_justify(true)
+                )
+                .sense(Sense::click() | Sense::hover() | Sense::drag()),
+            |ui| {
+                ui.set_height(Self::HEIGHT);
+
+                let available = ui.available_size();
+                let top_left = ui.cursor().min;
+
+                let title_height = { // Title
+                    let text = match &self.playable.info {
+                        PlayableInfo::Player(player) => player.name.as_str(),
+                        PlayableInfo::Group(group) => group.name.as_str(),
+                    };
+
+                    let galley = WidgetText::from(
+                        RichText::new(text)
+                            .text_style(TextStyle::Heading)
+                            .strong()
+                    ).into_galley(
+                        ui,
+                        Some(TextWrapMode::Truncate),
+                        available.x,
+                        FontSelection::Default,
+                    );
+                    let title_height = galley.rect.height() + margin;
+
+                    let mut title = ui.new_child(
+                        UiBuilder::new()
+                            .max_rect(emath::Rect::from_min_max(
+                                top_left,
+                                emath::pos2(top_left.x + available.x, top_left.y + title_height),
+                            ))
+                            .layout(Layout::left_to_right(Align::Center))
+                    );
+                    title.set_width(available.x);
+                    title.set_height(title_height);
+                    title.add(Label::new(galley).selectable(false));
+                    title_height
+                };
+
+                let mut sub_hovered = false;
+                if title_height < available.y {
+                    let top_left = emath::pos2(top_left.x, top_left.y + title_height);
+                    let seg_width = available.x / 2.0;
+                    let bottom_right = ui.max_rect().right_bottom();
+
+                    let mut left = ui.new_child(
+                        UiBuilder::new()
+                            .max_rect(emath::Rect::from_min_max(
+                                top_left,
+                                emath::pos2(top_left.x + seg_width, bottom_right.y),
+                            ))
+                            .layout(Layout::left_to_right(Align::TOP).with_main_wrap(true))
+                    );
+                    left.set_width(seg_width);
+                    sub_hovered = self.ui_left(&mut left);
+
+                    let mut right = ui.new_child(
+                        UiBuilder::new()
+                            .max_rect(emath::Rect::from_min_max(
+                                emath::pos2(top_left.x + seg_width, top_left.y),
+                                bottom_right,
+                            ))
+                            .layout(Layout::right_to_left(Align::Center))
+                    );
+                    right.set_width(seg_width);
+                    self.ui_right(&mut right);
+                }
+
+                ui.advance_cursor_after_rect(emath::Rect::from_min_size(
+                    top_left,
+                    available,
+                ));
+
+                sub_hovered
+            }
+        );
+        let response = frame.allocate_space(ui);
+        if response.hovered() && !inner.inner {
+            frame.frame.fill = ui.style().visuals.selection.bg_fill;
+        } else if self.idx % 2 != 0 {
+            frame.frame.fill = ui.style().visuals.faint_bg_color.gamma_multiply(4.0);
+        } else {
+            frame.frame.fill = ui.style().visuals.faint_bg_color.gamma_multiply(2.0);
+        }
+        frame.paint(ui);
+        response | inner.response
+    }
+}
 
 pub struct Devices {
+    heos: Arc<HeosConnection<Stateful>>,
     devices: Arc<Mutex<Bind<Vec<PlayableSnapshot>, Infallible>>>,
     updater: Updater,
+    actions: Vec<Bind<(), CommandError>>,
 }
 
 impl Devices {
@@ -66,54 +268,174 @@ impl Devices {
         };
 
         Self {
+            heos,
             devices,
             updater,
+            actions: vec![],
         }
+    }
+
+    fn add_to_group(&mut self, playable_id: PlayableId, new_player_id: PlayerId) {
+        debug!(target_id = ?playable_id, ?new_player_id, "Adding player to group");
+        let heos = self.heos.clone();
+        let mut bind = Bind::new(true);
+        bind.request(async move {
+            // Remove from any existing groups first
+            Self::remove_from_any_group_impl(&heos, new_player_id).await?;
+
+            let Some(playable) = heos.playable(playable_id).await else {
+                return Ok(())
+            };
+
+            match playable {
+                Playable::Group(group) => {
+                    if group.group.info().player(new_player_id).is_some() {
+                        // Already in the group
+                        return Ok(())
+                    }
+                    let player_ids = iter::once(group.leader_id())
+                        .chain(group.group.info().players.iter()
+                            .filter(|player| player.role != GroupRole::Leader)
+                            .map(|player| player.player_id))
+                        .chain(iter::once(new_player_id))
+                        .collect::<Vec<_>>();
+                    heos.command(SetGroup {
+                        player_ids,
+                    }).await?;
+                },
+                Playable::Player(player) => {
+                    heos.command(SetGroup {
+                        player_ids: vec![player.info().player_id, new_player_id],
+                    }).await?;
+                },
+            }
+
+            Ok(())
+        });
+        self.actions.push(bind);
+    }
+
+    async fn remove_from_any_group_impl(
+        heos: &Arc<HeosConnection<Stateful>>,
+        player_id: PlayerId,
+    ) -> Result<(), CommandError> {
+        for group in heos.groups().await {
+            if let Some(group_player) = group.info().player(player_id) {
+                if group_player.role == GroupRole::Leader {
+                    let player_ids = group.info().players.iter()
+                        .filter(|player| player.role != GroupRole::Leader)
+                        .map(|player| player.player_id)
+                        .collect::<Vec<_>>();
+                    // Delete the group first
+                    heos.command(SetGroup {
+                        player_ids: vec![group_player.player_id],
+                    }).await?;
+                    // Now recreate the group with the remaining players, if necessary
+                    if player_ids.len() > 1 {
+                        heos.command(SetGroup {
+                            player_ids,
+                        }).await?;
+                    }
+                } else {
+                    let player_ids = iter::once(group.leader_id())
+                        .chain(group.info().players.iter()
+                            .filter(|player| player.role != GroupRole::Leader && player.player_id != player_id)
+                            .map(|player| player.player_id))
+                        .collect::<Vec<_>>();
+                    heos.command(SetGroup {
+                        player_ids,
+                    }).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn remove_from_any_group(&mut self, player_id: PlayerId) {
+        debug!(?player_id, "Removing player from any groups");
+        let heos = self.heos.clone();
+        let mut bind = Bind::new(true);
+        bind.request(async move {
+            Self::remove_from_any_group_impl(&heos, player_id).await
+        });
+        self.actions.push(bind);
     }
 
     fn show(&mut self, ui: &mut Ui) -> Option<PlayableId> {
         let mut selected = None;
 
+        ui.spacing_mut().scroll.foreground_color = true;
+
+        let mut group_adds = vec![];
+        let mut group_removes = vec![];
+
         if let Some(devices) = self.devices.lock().read() {
             let devices = devices.as_ref().unwrap();
             ScrollArea::vertical().show(ui, |ui| {
-                Grid::new("devices_grid")
-                    .striped(true)
+                let dnd = Grid::new("devices_grid")
                     .num_columns(1)
                     .show(ui, |ui| {
-                        for device in devices {
-                            ui.centered_and_justified(|ui| {
-                                {
-                                    let style = ui.style_mut();
-                                    style.override_text_style = Some(TextStyle::Heading);
-                                    style.visuals.interact_cursor = Some(CursorIcon::Alias);
-                                }
-                                let text = match &device.info {
-                                    PlayableInfo::Player(player) => player.name.as_str(),
-                                    PlayableInfo::Group(group) => group.name.as_str(),
+                        let mut dnd = false;
+                        for (idx, device) in devices.iter().enumerate() {
+                            let response = ui.add(Device::new(idx, device));
+                            {
+                                let player_id = match &device.info {
+                                    PlayableInfo::Group(_) => None,
+                                    PlayableInfo::Player(player) => Some(player.player_id),
                                 };
-                                let label = Label::new(text)
-                                    .truncate()
-                                    .selectable(false)
-                                    .sense(Sense::click());
-                                if ui.add(label).clicked() {
-                                    selected = Some(device.id);
+                                if let Some(player_id) = player_id {
+                                    response.dnd_set_drag_payload(player_id);
                                 }
-                            });
-
+                            }
+                            if response.clicked() {
+                                selected = Some(device.id);
+                            }
+                            if let Some(payload) = response.dnd_release_payload::<PlayerId>() {
+                                group_adds.push((device.id, *payload));
+                                dnd = true;
+                            }
                             ui.end_row();
                         }
-                    });
+                        dnd
+                    }).inner;
+
+                if !dnd {
+                    let response = ui.allocate_response(ui.available_size(), Sense::empty());
+                    if let Some(payload) = response.dnd_release_payload::<PlayerId>() {
+                        group_removes.push(*payload);
+                    }
+                }
             });
+
         } else {
             ui.spinner();
         }
+
+        for (playable_id, new_player_id) in group_adds {
+            self.add_to_group(playable_id, new_player_id);
+        }
+
+        for player_id in group_removes {
+            self.remove_from_any_group(player_id);
+        }
+
+        self.actions.retain_mut(|action| {
+            if let Some(_) = action.take() {
+                // TODO create a popup if there is an error
+                false
+            } else {
+                true
+            }
+        });
 
         selected
     }
 
     pub fn update(&mut self, ctx: &Context) -> Option<PlayableId> {
-        egui::CentralPanel::default().show(ctx, |ui| self.show(ui)).inner
+        egui::CentralPanel::default()
+            .frame(Frame::central_panel(&ctx.style())
+                .fill(ctx.style().visuals.extreme_bg_color))
+            .show(ctx, |ui| self.show(ui)).inner
     }
 }
 

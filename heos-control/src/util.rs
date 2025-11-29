@@ -1,23 +1,9 @@
-use egui::Color32;
 use egui_async::Bind;
 use futures_lite::FutureExt;
 use heos::data::event::Event;
 use heos::{HeosConnection, Stateful};
 use std::convert::Infallible;
 use std::sync::Arc;
-
-pub fn normalized_gamma_multiply(original: Color32, mut factor: f32) -> Color32 {
-    if original.intensity() < 0.5 {
-        // Assume "dark mode", and flip the factor
-        factor = 1.0 / factor;
-        if factor < 1.0 {
-            factor *= 0.875;
-        } else {
-            factor *= 1.25;
-        }
-    }
-    original.gamma_multiply(factor)
-}
 
 pub struct Updater {
     inner: Bind<(), Infallible>,

@@ -5,7 +5,6 @@ use std::sync::Arc;
 use crate::assets;
 use crate::screen::devices::Devices;
 use crate::screen::media_bar::MediaBar;
-use crate::util::normalized_gamma_multiply;
 
 enum Screen {
     Devices(Devices),
@@ -35,7 +34,7 @@ impl Loaded {
             .resizable(false)
             .exact_width(48.0)
             .frame(egui::Frame {
-                fill: normalized_gamma_multiply(ctx.style().visuals.panel_fill, 0.925),
+                fill: ctx.style().visuals.panel_fill.gamma_multiply(0.8),
                 inner_margin: Margin::ZERO,
                 outer_margin: Margin::ZERO,
                 shadow: egui::Shadow {

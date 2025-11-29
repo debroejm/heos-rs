@@ -1,5 +1,5 @@
 use egui::style::HandleShape;
-use egui::{Align, Button, Color32, Context, Direction, Frame, Image, Label, Layout, RichText, Slider, Stroke, Ui, UiBuilder};
+use egui::{Align, Button, Color32, Context, Direction, Frame, Label, Layout, RichText, Slider, Stroke, Ui, UiBuilder};
 use egui_async::Bind;
 use heos::command::{CommandError, CommandErrorCode};
 use heos::data::event::Event;
@@ -12,7 +12,8 @@ use std::sync::Arc;
 use tracing::warn;
 
 use crate::assets;
-use crate::util::{normalized_gamma_multiply, Updater};
+use crate::util::Updater;
+use crate::widgets::MediaDisplay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ControlButton {
@@ -53,22 +54,11 @@ impl ActiveData {
     }
 
     fn song_info(&self, ui: &mut Ui) {
-        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-            match &self.snapshot.now_playing.info {
-                NowPlayingInfo::Song { info, .. } | NowPlayingInfo::Station { info, .. } => {
-                    if let Some(image) = info.image_url.as_ref().map(|url| Image::from_uri(url.as_str())) {
-                        ui.add(image);
-                    }
-
-                    ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
-                        ui.add_space(20.0);
-                        ui.add(Label::new(RichText::new(&info.song).strong()).truncate());
-                        ui.add(Label::new(&info.album).truncate());
-                        ui.add(Label::new(&info.artist).truncate());
-                    });
-                }
+        match &self.snapshot.now_playing.info {
+            NowPlayingInfo::Song { info, .. } | NowPlayingInfo::Station { info, .. } => {
+                ui.add(MediaDisplay::new(info));
             }
-        });
+        }
     }
 
     fn control_button(&mut self, ui: &mut Ui, button_type: ControlButton) {
@@ -434,10 +424,8 @@ impl MediaBar {
     pub fn update(&mut self, ctx: &Context) {
         egui::TopBottomPanel::bottom("media_bar")
             .resizable(false)
-            .frame(Frame {
-                fill: normalized_gamma_multiply(ctx.style().visuals.panel_fill, 0.85),
-                ..Frame::side_top_panel(&ctx.style())
-            })
+            .frame(Frame::side_top_panel(&ctx.style())
+                .fill(ctx.style().visuals.panel_fill.gamma_multiply(1.2)))
             .show_separator_line(false)
             .exact_height(Self::MIN_SIZE.y)
             .show(ctx, |ui| self.show(ctx, ui));
