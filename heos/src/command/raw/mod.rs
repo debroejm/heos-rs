@@ -177,6 +177,11 @@ impl RawCommand {
         &self.command
     }
 
+    /// The full command ID, of the format "\<group\>/\<name\>".
+    pub fn command(&self) -> String {
+        format!("{}/{}", self.group(), self.name())
+    }
+
     /// This command's parameters.
     #[inline]
     pub fn params(&self) -> &Params {
