@@ -6,8 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use qstring::QString;
 use strum::EnumString;
-
+use crate::command::CommandError;
 use super::*;
 use crate::data::player::PlayerId;
 
@@ -36,7 +37,7 @@ pub enum GroupRole {
 impl_enum_string_conversions!(GroupRole);
 
 /// Information about a player that is participating in a group.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct GroupPlayer {
     /// The user-friendly name of the player.
     pub name: String,
@@ -86,5 +87,46 @@ impl GroupInfo {
             }
         }
         None
+    }
+}
+
+/// Result of using the [SetGroup](crate::command::group::SetGroup) command.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum SetGroupResult {
+    /// The group was deleted.
+    Deleted,
+    /// The group was either created or modified.
+    ///
+    /// These are effectively treated as the same.
+    CreatedOrModified {
+        /// The ID of the group.
+        #[serde(rename = "gid")]
+        group_id: GroupId,
+        /// The name of the group.
+        name: String,
+    }
+}
+impl_try_from_response_qs!(SetGroupResult);
+
+impl TryFrom<QString> for SetGroupResult {
+    type Error = CommandError;
+
+    fn try_from(qs: QString) -> Result<Self, Self::Error> {
+        let group_id = match qs.get("gid") {
+            Some(gid_str) => {
+                gid_str.parse::<GroupId>()
+                    .map_err(|err| CommandError::MalformedResponse(format!("could not parse 'gid': {err:?}")))?
+            },
+            None => return Ok(Self::Deleted),
+        };
+        let name = match qs.get("name") {
+            Some(name) => name.to_string(),
+            None => return Ok(Self::Deleted),
+        };
+        Ok(Self::CreatedOrModified {
+            group_id,
+            name,
+        })
     }
 }

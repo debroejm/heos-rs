@@ -1276,80 +1276,62 @@ impl MockChannel {
                             None => invalid_id_error(&command, "pid", leader_id),
                         }
                     } else {
-                        let mut player_ids = player_ids[1..].iter()
+                        let player_ids = player_ids[1..].iter()
                             .cloned()
                             .collect::<HashSet<_>>();
-                        match group_id {
-                            Some(group_id) => {
-                                {
-                                    let group = system.groups.get_mut(&group_id).unwrap();
-                                    group.snapshot.info.players.retain(|player| {
-                                        !player_ids.remove(&player.player_id)
-                                    });
-                                }
-                                let players = player_ids.into_iter()
-                                    .map(|player_id| {
-                                        let player = system.players.get(&player_id)
-                                            .ok_or(invalid_id_error(&command, "pid", player_id))?;
-                                        Ok(GroupPlayer {
-                                            name: player.snapshot.info.name.clone(),
-                                            player_id,
-                                            role: GroupRole::Member,
-                                        })
+
+                        let leader = {
+                            let leader = system.players.get(&leader_id)
+                                .ok_or(invalid_id_error(&command, "pid", leader_id))?;
+                            GroupPlayer {
+                                name: leader.snapshot.info.name.clone(),
+                                player_id: leader_id,
+                                role: GroupRole::Leader,
+                            }
+                        };
+                        let players = std::iter::once(Ok(leader))
+                            .chain(player_ids.into_iter()
+                                .map(|player_id| {
+                                    let player = system.players.get(&player_id)
+                                        .ok_or(invalid_id_error(&command, "pid", player_id))?;
+                                    Ok(GroupPlayer {
+                                        name: player.snapshot.info.name.clone(),
+                                        player_id,
+                                        role: GroupRole::Member,
                                     })
-                                    .collect::<Result<Vec<_>, _>>()?;
+                                })
+                            )
+                            .collect::<Result<Vec<_>, _>>()?;
+
+                        let name = players.iter()
+                            .map(|player| player.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join("+");
+
+                        let group_id = match group_id {
+                            Some(group_id) => {
                                 let group = system.groups.get_mut(&group_id).unwrap();
-                                group.snapshot.info.players.extend(players);
-                                success_response(&command, [
-                                    ("gid".to_string(), group.snapshot.info.group_id.to_string()),
-                                    ("name".to_string(), group.snapshot.info.name.clone()),
-                                ], None, None)
+                                group.snapshot.info.name = name.clone();
+                                group.snapshot.info.players = players;
+                                group_id
                             },
                             None => {
-                                let leader = {
-                                    let leader = system.players.get(&leader_id)
-                                        .ok_or(invalid_id_error(&command, "pid", leader_id))?;
-                                    GroupPlayer {
-                                        name: leader.snapshot.info.name.clone(),
-                                        player_id: leader_id,
-                                        role: GroupRole::Leader,
-                                    }
-                                };
-                                let players = std::iter::once(Ok(leader))
-                                    .chain(player_ids.into_iter()
-                                        .map(|player_id| {
-                                            let player = system.players.get(&player_id)
-                                                .ok_or(invalid_id_error(&command, "pid", player_id))?;
-                                            Ok(GroupPlayer {
-                                                name: player.snapshot.info.name.clone(),
-                                                player_id,
-                                                role: GroupRole::Member,
-                                            })
-                                        })
-                                    )
-                                    .collect::<Result<Vec<_>, _>>()?;
-
-                                let name = players.iter()
-                                    .map(|player| player.name.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join("+");
-
                                 // Just use the leader's ID, as the leader is the anchor of the group
                                 let group_id = GroupId::from(leader_id.0);
-
                                 let group = MockGroup::new(GroupInfo {
                                     name: name.clone(),
                                     group_id,
                                     players,
                                 });
                                 system.groups.insert(group);
+                                group_id
+                            },
+                        };
 
-                                success_response(&command, [
-                                    ("gid".to_string(), group_id.to_string()),
-                                    ("name".to_string(), name),
-                                ], None, None)
-                            }
-                        }
+                        success_response(&command, [
+                            ("gid".to_string(), group_id.to_string()),
+                            ("name".to_string(), name),
+                        ], None, None)
                     }
                 }
             },

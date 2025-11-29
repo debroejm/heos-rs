@@ -15,7 +15,7 @@ fn create_doctest_channel() -> MockChannel {
     let mut system = MockHeosSystem::default();
 
     system.players.insert(MockPlayer::new(PlayerInfo {
-        name: "PlayerA".to_string(),
+        name: "Player1".to_string(),
         player_id: PlayerId::from(1),
         group_id: Some(GroupId::from(1)),
         model: "BasicPlayer".to_string(),
@@ -27,7 +27,7 @@ fn create_doctest_channel() -> MockChannel {
         serial: None,
     }));
     system.players.insert(MockPlayer::new(PlayerInfo {
-        name: "PlayerB".to_string(),
+        name: "Player2".to_string(),
         player_id: PlayerId::from(2),
         group_id: Some(GroupId::from(1)),
         model: "BasicPlayer".to_string(),
@@ -39,7 +39,7 @@ fn create_doctest_channel() -> MockChannel {
         serial: None,
     }));
     system.players.insert(MockPlayer::new(PlayerInfo {
-        name: "PlayerC".to_string(),
+        name: "Player3".to_string(),
         player_id: PlayerId::from(3),
         group_id: Some(GroupId::from(1)),
         model: "BasicPlayer".to_string(),
@@ -56,17 +56,17 @@ fn create_doctest_channel() -> MockChannel {
         group_id: GroupId::from(1),
         players: vec![
             GroupPlayer {
-                name: "PlayerA".to_string(),
+                name: "Player1".to_string(),
                 player_id: PlayerId::from(1),
                 role: GroupRole::Leader,
             },
             GroupPlayer {
-                name: "PlayerB".to_string(),
+                name: "Player2".to_string(),
                 player_id: PlayerId::from(2),
                 role: GroupRole::Member,
             },
             GroupPlayer {
-                name: "PlayerC".to_string(),
+                name: "Player3".to_string(),
                 player_id: PlayerId::from(3),
                 role: GroupRole::Member,
             },
@@ -74,7 +74,7 @@ fn create_doctest_channel() -> MockChannel {
     }));
 
     let mut player = MockPlayer::new(PlayerInfo {
-        name: "TheAnswer".to_string(),
+        name: "Player42".to_string(),
         player_id: PlayerId::from(42),
         group_id: None,
         model: "AQuestion".to_string(),
@@ -140,7 +140,7 @@ fn create_doctest_channel() -> MockChannel {
     ];
     system.players.insert(player);
     system.players.insert(MockPlayer::new(PlayerInfo {
-        name: "TheBackupAnswer".to_string(),
+        name: "Player43".to_string(),
         player_id: PlayerId::from(43),
         group_id: None,
         model: "AQuestion".to_string(),

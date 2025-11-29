@@ -65,21 +65,25 @@ impl_command!(GetGroupInfo, "group", "get_group_info", GroupInfo);
 /// If the group leader's ID is not currently part of a group, a new group will be created and the
 /// remaining specified IDs will be added to that group.
 ///
-/// If the group leader's ID refers to an existing group, the remaining IDs will be added or removed
-/// from that group. If a specified ID matches one that is already in the group it will be removed;
-/// otherwise it will be added.
+/// If the group leader's ID refers to an existing group, the remaining IDs will be used to set the
+/// remaining members of that group. For example, if the group \[A,B,C\] exists, and SetGroup is
+/// executed with the parameter \[A,B,D\], then the existing group will have C removed and D added.
 ///
 /// If a single group leader ID is specified with no following IDs, all players in the group will be
 /// ungrouped and the group will be deleted.
+///
+/// When adding members to a group, it is recommended to first ensure any new members are not
+/// currently in a prior group, as that can cause the command to fail under certain circumstances.
 ///
 /// # Examples
 ///
 /// Create a new group
 /// ```
+/// use assert_matches::assert_matches;
 /// # use heos::ConnectError;
 /// use heos::HeosConnection;
-/// use heos::command::group::SetGroup;
-/// use heos::data::group::{GroupId, GroupInfo};
+/// use heos::command::group::{GetGroupInfo, SetGroup};
+/// use heos::data::group::*;
 /// use heos::data::player::PlayerId;
 /// use std::time::Duration;
 ///
@@ -87,23 +91,38 @@ impl_command!(GetGroupInfo, "group", "get_group_info", GroupInfo);
 /// # async fn main() -> Result<(), ConnectError> {
 /// # heos::install_doctest_handler();
 /// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
-/// heos.command(SetGroup {
+/// let result = heos.command(SetGroup {
 ///     player_ids: vec![
 ///         // Neither of these are in an existing group. PlayerId '42' will be the new group leader.
 ///         PlayerId::from(42),
 ///         PlayerId::from(43),
 ///     ],
 /// }).await?;
+/// let group_id = assert_matches!(result, SetGroupResult::CreatedOrModified { group_id, .. } => group_id);
+/// let group = heos.command(GetGroupInfo { group_id }).await?;
+/// assert_eq!(group.players, vec![
+///     GroupPlayer {
+///         name: "Player42".to_string(),
+///         player_id: PlayerId::from(42),
+///         role: GroupRole::Leader,
+///     },
+///     GroupPlayer {
+///         name: "Player43".to_string(),
+///         player_id: PlayerId::from(43),
+///         role: GroupRole::Member,
+///     },
+/// ]);
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// Modify members of an existing group
 /// ```
+/// use assert_matches::assert_matches;
 /// # use heos::ConnectError;
 /// use heos::HeosConnection;
-/// use heos::command::group::SetGroup;
-/// use heos::data::group::{GroupId, GroupInfo};
+/// use heos::command::group::{GetGroupInfo, SetGroup};
+/// use heos::data::group::*;
 /// use heos::data::player::PlayerId;
 /// use std::time::Duration;
 ///
@@ -111,26 +130,46 @@ impl_command!(GetGroupInfo, "group", "get_group_info", GroupInfo);
 /// # async fn main() -> Result<(), ConnectError> {
 /// # heos::install_doctest_handler();
 /// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
-/// heos.command(SetGroup {
+/// let result = heos.command(SetGroup {
+///     // Given the existing group [1,2,3]:
 ///     player_ids: vec![
 ///         // '1' is the existing group leader
 ///         PlayerId::from(1),
-///         // Remove '3' from the group
+///         // Keep '3', but remove '2' and add '43'
 ///         PlayerId::from(3),
-///         // Add '43' to the group
 ///         PlayerId::from(43),
 ///     ],
 /// }).await?;
+/// let group_id = assert_matches!(result, SetGroupResult::CreatedOrModified { group_id, .. } => group_id);
+/// let group = heos.command(GetGroupInfo { group_id }).await?;
+/// assert_eq!(group.players, vec![
+///     GroupPlayer {
+///         name: "Player1".to_string(),
+///         player_id: PlayerId::from(1),
+///         role: GroupRole::Leader,
+///     },
+///     GroupPlayer {
+///         name: "Player3".to_string(),
+///         player_id: PlayerId::from(3),
+///         role: GroupRole::Member,
+///     },
+///     GroupPlayer {
+///         name: "Player43".to_string(),
+///         player_id: PlayerId::from(43),
+///         role: GroupRole::Member,
+///     },
+/// ]);
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// Delete a group
 /// ```
+/// use assert_matches::assert_matches;
 /// # use heos::ConnectError;
 /// use heos::HeosConnection;
-/// use heos::command::group::SetGroup;
-/// use heos::data::group::{GroupId, GroupInfo};
+/// use heos::command::group::{GetGroupInfo, SetGroup};
+/// use heos::data::group::*;
 /// use heos::data::player::PlayerId;
 /// use std::time::Duration;
 ///
@@ -138,12 +177,13 @@ impl_command!(GetGroupInfo, "group", "get_group_info", GroupInfo);
 /// # async fn main() -> Result<(), ConnectError> {
 /// # heos::install_doctest_handler();
 /// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
-/// heos.command(SetGroup {
+/// let result = heos.command(SetGroup {
 ///     player_ids: vec![
-///         // Delete the group the '1' leads
+///         // Delete the group that '1' leads
 ///         PlayerId::from(1),
 ///     ],
 /// }).await?;
+/// assert_matches!(result, SetGroupResult::Deleted);
 /// # Ok(())
 /// # }
 /// ```
@@ -152,8 +192,7 @@ pub struct SetGroup {
     #[serde(rename = "pid")]
     pub player_ids: Vec<PlayerId>,
 }
-// TODO: SetGroup has very specialized responses that need to be implemented
-impl_command!(SetGroup, "group", "set_group", ());
+impl_command!(SetGroup, "group", "set_group", SetGroupResult);
 
 /// Retrieve a group's current volume level.
 ///
