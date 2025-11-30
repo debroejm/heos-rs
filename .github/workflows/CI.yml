@@ -53,7 +53,7 @@ jobs:
           args: --package heos
 
   build-heos-control:
-    name: "cargo build --package heos-control" (${{ matrix.rust }} on ${{ matrix.os }})"
+    name: "cargo build --package heos-control (${{ matrix.rust }} on ${{ matrix.os }})"
     needs: check
     strategy:
       matrix:
