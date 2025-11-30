@@ -1,0 +1,42 @@
+name: release
+
+on:
+  push:
+    tags:
+      - heos-v[0-9]+.*
+      - heos-control-v[0-9]+.*
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    if: github.repository == 'debroejm/heos-rs'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          prefix: heos(-control)?
+          changelog: "$prefix/CHANGELOG.md"
+          title: "$prefix $version"
+          branch: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-assets:
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: heos-control
+          target: ${{ matrix.target }}
+          token: ${{ secrets.GITHUB_TOKEN }}
