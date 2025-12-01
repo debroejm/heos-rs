@@ -11,7 +11,7 @@ use crate::data::maybe_range;
 use crate::data::option::WithOptions;
 use crate::data::player::*;
 use crate::data::quickselect::*;
-use crate::data::song::*;
+use crate::data::queue::*;
 
 /// Retrieve all known players.
 ///
@@ -126,7 +126,7 @@ impl_command!(SetPlayState, "player", "set_play_state", ());
 /// use heos::command::player::GetNowPlayingMedia;
 /// use heos::data::option::WithOptions;
 /// use heos::data::player::PlayerId;
-/// use heos::data::song::NowPlayingInfo;
+/// use heos::data::queue::NowPlayingInfo;
 /// use std::time::Duration;
 ///
 /// # #[tokio::main(flavor = "current_thread")]
@@ -434,14 +434,14 @@ impl_command!(SetPlayMode, "player", "set_play_mode", ());
 /// use heos::HeosConnection;
 /// use heos::command::player::GetQueue;
 /// use heos::data::player::PlayerId;
-/// use heos::data::song::SongInfo;
+/// use heos::data::queue::QueuedTrackInfo;
 /// use std::time::Duration;
 ///
 /// # #[tokio::main(flavor = "current_thread")]
 /// # async fn main() -> Result<(), ConnectError> {
 /// # heos::install_doctest_handler();
 /// let heos = HeosConnection::connect_any(Duration::from_secs(1)).await?;
-/// let queue: Vec<SongInfo> = heos.command(GetQueue {
+/// let queue: Vec<QueuedTrackInfo> = heos.command(GetQueue {
 ///     player_id: PlayerId::from(42),
 ///     range: None,
 /// }).await?;
@@ -463,7 +463,7 @@ pub struct GetQueue {
     #[serde(serialize_with = "maybe_range::serialize")]
     pub range: Option<RangeInclusive<usize>>,
 }
-impl_command!(GetQueue, "player", "get_queue", Vec<SongInfo>);
+impl_command!(GetQueue, "player", "get_queue", Vec<QueuedTrackInfo>);
 
 /// Play a particular song from a player's queue.
 ///
@@ -472,7 +472,7 @@ impl_command!(GetQueue, "player", "get_queue", Vec<SongInfo>);
 /// use heos::HeosConnection;
 /// use heos::command::player::PlayQueueItem;
 /// use heos::data::player::PlayerId;
-/// use heos::data::song::QueueId;
+/// use heos::data::queue::QueueId;
 /// use std::time::Duration;
 ///
 /// # #[tokio::main(flavor = "current_thread")]
@@ -504,7 +504,7 @@ impl_command!(PlayQueueItem, "player", "play_queue", ());
 /// use heos::HeosConnection;
 /// use heos::command::player::RemoveFromQueue;
 /// use heos::data::player::PlayerId;
-/// use heos::data::song::QueueId;
+/// use heos::data::queue::QueueId;
 /// use std::time::Duration;
 ///
 /// # #[tokio::main(flavor = "current_thread")]
@@ -593,7 +593,7 @@ impl_command!(ClearQueue, "player", "clear_queue", ());
 /// use heos::HeosConnection;
 /// use heos::command::player::MoveQueue;
 /// use heos::data::player::PlayerId;
-/// use heos::data::song::QueueId;
+/// use heos::data::queue::QueueId;
 /// use std::time::Duration;
 ///
 /// # #[tokio::main(flavor = "current_thread")]

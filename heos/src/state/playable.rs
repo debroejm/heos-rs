@@ -18,7 +18,7 @@ use crate::command::CommandError;
 use crate::data::common::*;
 use crate::data::group::*;
 use crate::data::player::*;
-use crate::data::song::SongInfo;
+use crate::data::queue::QueuedTrackInfo;
 use crate::data::source::SourceId;
 use crate::state::group::{Group, GroupsIter};
 use crate::state::player::{NowPlaying, Player, PlayersIter, Queue};
@@ -90,7 +90,7 @@ pub struct PlayableSnapshot {
     /// State of the currently playing media.
     pub now_playing: NowPlaying,
     /// The queue of tracks to play next.
-    pub queue: Vec<SongInfo>,
+    pub queue: Vec<QueuedTrackInfo>,
     /// The play state.
     pub play_state: PlayState,
     /// The volume level.

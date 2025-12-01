@@ -6,8 +6,9 @@ use heos::command::group::SetGroup;
 use heos::command::CommandError;
 use heos::data::event::Event;
 use heos::data::group::{GroupPlayer, GroupRole};
+use heos::data::media::MediaItem;
 use heos::data::player::PlayerId;
-use heos::data::song::NowPlayingInfo;
+use heos::data::queue::NowPlayingInfo;
 use heos::state::playable::{Playable, PlayableId, PlayableInfo, PlayableSnapshot};
 use heos::{HeosConnection, Stateful};
 use parking_lot::Mutex;
@@ -103,7 +104,8 @@ impl<'a> Device<'a> {
             NowPlayingInfo::Station { info, .. } |
             NowPlayingInfo::Song { info, .. } => info,
         };
-        ui.add(MediaDisplay::new(track_info));
+        let item = MediaItem::from(track_info.clone());
+        ui.add(MediaDisplay::new(&item));
     }
 }
 

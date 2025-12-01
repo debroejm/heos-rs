@@ -11,6 +11,7 @@ use crate::command::CommandError;
 use crate::data::option::*;
 use crate::data::source::*;
 use crate::channel::Channel;
+use crate::data::media::{AlbumMetadata, MediaItem};
 use crate::state::{locked_data_iter, FromLockedData};
 
 #[derive(Debug)]
@@ -71,7 +72,7 @@ impl<'a> Source<'a> {
     /// # Errors
     ///
     /// Errors if sending a [Browse] command errors.
-    pub async fn browse(&self) -> Result<WithOptions<Vec<SourceItem>>, CommandError> {
+    pub async fn browse(&self) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
         self.channel.lock().await
             .send_command(Browse {
                 source_id: self.data.info.source_id,
@@ -89,7 +90,7 @@ impl<'a> Source<'a> {
         &self,
         container_id: impl Into<String>,
         range: Option<RangeInclusive<usize>>
-    ) -> Result<WithOptions<Vec<SourceItem>>, CommandError> {
+    ) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
         self.channel.lock().await
             .send_command(Browse {
                 source_id: self.data.info.source_id,
@@ -121,7 +122,7 @@ impl<'a> Source<'a> {
         &self,
         search: impl Into<String>,
         criteria: CriteriaId,
-    ) -> Result<WithOptions<Vec<SourceItem>>, CommandError> {
+    ) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
         self.search_impl(search.into(), criteria).await
     }
 
@@ -129,7 +130,7 @@ impl<'a> Source<'a> {
         &self,
         search: String,
         criteria: CriteriaId,
-    ) -> Result<WithOptions<Vec<SourceItem>>, CommandError> {
+    ) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
         let mut all_items = vec![];
         let mut options = vec![];
         loop {

@@ -16,7 +16,7 @@ use crate::command::{CommandError, CommandErrorCode};
 use crate::data::common::*;
 use crate::data::event::PlayerNowPlayingProgress;
 use crate::data::player::*;
-use crate::data::song::*;
+use crate::data::queue::*;
 use crate::data::source::SourceId;
 use crate::state::{locked_data_iter, FromLockedData};
 
@@ -83,7 +83,7 @@ pub struct NowPlaying {
 pub(super) struct PlayerData {
     pub info: PlayerInfo,
     pub now_playing: AsyncRwLock<NowPlaying>,
-    pub queue: AsyncRwLock<Vec<SongInfo>>,
+    pub queue: AsyncRwLock<Vec<QueuedTrackInfo>>,
     pub play_state: AsyncRwLock<PlayState>,
     pub volume: AsyncRwLock<Volume>,
     pub mute: AsyncRwLock<MuteState>,
@@ -200,7 +200,7 @@ pub struct PlayerSnapshot {
     /// State of the currently playing media.
     pub now_playing: NowPlaying,
     /// The queue of tracks to play next.
-    pub queue: Vec<SongInfo>,
+    pub queue: Vec<QueuedTrackInfo>,
     /// The play state.
     pub play_state: PlayState,
     /// The volume level.
@@ -529,12 +529,12 @@ locked_data_iter!(PlayersIter, PlayerId, PlayerData, Player);
 /// This provides methods to asynchronously manipulate a player's queue.
 pub struct Queue<'a> {
     player: &'a Player<'a>,
-    queue: &'a AsyncRwLock<Vec<SongInfo>>,
+    queue: &'a AsyncRwLock<Vec<QueuedTrackInfo>>,
 }
 
 impl<'a> Queue<'a> {
     /// Get a read lock on the queues data so it can be inspected.
-    pub async fn data(&self) -> AsyncRwLockReadGuard<'a, Vec<SongInfo>> {
+    pub async fn data(&self) -> AsyncRwLockReadGuard<'a, Vec<QueuedTrackInfo>> {
         self.queue.read().await
     }
 

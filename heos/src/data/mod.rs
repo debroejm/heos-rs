@@ -6,11 +6,12 @@ use std::num::ParseIntError;
 pub mod common;
 pub mod event;
 pub mod group;
+pub mod media;
 pub mod option;
 pub mod player;
 pub mod quickselect;
 pub mod response;
-pub mod song;
+pub mod queue;
 pub mod source;
 pub mod system;
 

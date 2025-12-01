@@ -4,13 +4,13 @@ use egui_async::Bind;
 use heos::command::{CommandError, CommandErrorCode};
 use heos::data::event::Event;
 use heos::data::player::{PlayState, RepeatMode, ShuffleMode};
-use heos::data::song::NowPlayingInfo;
+use heos::data::queue::NowPlayingInfo;
 use heos::state::playable::{PlayableId, PlayableSnapshot};
 use heos::{HeosConnection, Stateful};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use tracing::warn;
-
+use heos::data::media::MediaItem;
 use crate::assets;
 use crate::util::Updater;
 use crate::widgets::MediaDisplay;
@@ -56,7 +56,8 @@ impl ActiveData {
     fn song_info(&self, ui: &mut Ui) {
         match &self.snapshot.now_playing.info {
             NowPlayingInfo::Song { info, .. } | NowPlayingInfo::Station { info, .. } => {
-                ui.add(MediaDisplay::new(info));
+                let item = MediaItem::from(info.clone());
+                ui.add(MediaDisplay::new(&item));
             }
         }
     }

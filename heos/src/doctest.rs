@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::data::group::*;
 use crate::data::player::*;
-use crate::data::song::*;
+use crate::data::queue::*;
 use crate::data::source::*;
 use crate::mock::{MockChannel, MockGroup, MockHeosSystem, MockPlayer, MockPlaylist, MockTrack};
 use crate::state::player::{NowPlaying, NowPlayingProgress};
@@ -87,7 +87,7 @@ fn create_doctest_channel() -> MockChannel {
     });
     player.snapshot.now_playing = NowPlaying {
         info: NowPlayingInfo::Song {
-            info: SongInfo {
+            info: QueuedTrackInfo {
                 song: "TheCurrentSong".to_string(),
                 album: "TheCurrentAlbum".to_string(),
                 artist: "TheCurrentArtist".to_string(),
@@ -101,7 +101,7 @@ fn create_doctest_channel() -> MockChannel {
         progress: NowPlayingProgress::new(Duration::from_secs(9001)),
     };
     player.snapshot.queue = vec![
-        SongInfo {
+        QueuedTrackInfo {
             song: "Song1".to_string(),
             album: "QueuedSongs".to_string(),
             artist: "QueuedArtist".to_string(),
@@ -110,7 +110,7 @@ fn create_doctest_channel() -> MockChannel {
             queue_id: QueueId::from(1),
             album_id: Some("queued-album-id".to_string()),
         },
-        SongInfo {
+        QueuedTrackInfo {
             song: "Song2".to_string(),
             album: "QueuedSongs".to_string(),
             artist: "QueuedArtist".to_string(),
@@ -119,7 +119,7 @@ fn create_doctest_channel() -> MockChannel {
             queue_id: QueueId::from(2),
             album_id: Some("queued-album-id".to_string()),
         },
-        SongInfo {
+        QueuedTrackInfo {
             song: "Song3".to_string(),
             album: "QueuedSongs".to_string(),
             artist: "QueuedArtist".to_string(),
@@ -128,7 +128,7 @@ fn create_doctest_channel() -> MockChannel {
             queue_id: QueueId::from(3),
             album_id: Some("queued-album-id".to_string()),
         },
-        SongInfo {
+        QueuedTrackInfo {
             song: "Song4".to_string(),
             album: "QueuedSongs".to_string(),
             artist: "QueuedArtist".to_string(),
@@ -153,7 +153,7 @@ fn create_doctest_channel() -> MockChannel {
     }));
 
     let mut playlist = MockPlaylist::new("playlist-id".to_string(), "My Playlist".to_string());
-    playlist.tracks.push(SongInfo {
+    playlist.tracks.push(QueuedTrackInfo {
         song: "PlaylistSong1".to_string(),
         album: "PlaylistSongs".to_string(),
         artist: "PlaylistArtist".to_string(),
@@ -167,7 +167,7 @@ fn create_doctest_channel() -> MockChannel {
 
     let local_usb = system.sources.get_mut(&SourceId::LocalUsbOrDlna).unwrap();
     local_usb.catalogue.insert(MockTrack::new(
-        SongInfo {
+        QueuedTrackInfo {
             song: "NewSong".to_string(),
             album: "".to_string(),
             artist: "NewArtist".to_string(),

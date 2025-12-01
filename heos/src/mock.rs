@@ -44,7 +44,7 @@ use crate::data::group::*;
 use crate::data::player::*;
 use crate::data::quickselect::*;
 use crate::data::response::*;
-use crate::data::song::*;
+use crate::data::queue::*;
 use crate::data::source::*;
 use crate::state::group::GroupSnapshot;
 use crate::state::player::{NowPlaying, NowPlayingProgress, PlayerSnapshot};
@@ -277,7 +277,7 @@ impl MockPlayer {
             info,
             now_playing: NowPlaying {
                 info: NowPlayingInfo::Song {
-                    info: SongInfo {
+                    info: QueuedTrackInfo {
                         song: "".to_string(),
                         album: "".to_string(),
                         artist: "".to_string(),
@@ -442,7 +442,7 @@ pub struct MockPlaylist {
     /// Name of this playlist
     pub name: String,
     /// Tracks in this playlist.
-    pub tracks: Vec<SongInfo>,
+    pub tracks: Vec<QueuedTrackInfo>,
 }
 
 impl MockPlaylist {
@@ -469,7 +469,7 @@ impl MockItem for MockPlaylist {
 #[derive(Debug, Clone)]
 pub struct MockTrack {
     /// Track information.
-    pub info: SongInfo,
+    pub info: QueuedTrackInfo,
     /// ID of the source this track belongs to.
     pub source_id: SourceId,
     /// Duration of this track.
@@ -478,7 +478,7 @@ pub struct MockTrack {
 
 impl MockTrack {
     /// Create a new mock track.
-    pub fn new(info: SongInfo, source_id: SourceId, duration: Duration) -> Self {
+    pub fn new(info: QueuedTrackInfo, source_id: SourceId, duration: Duration) -> Self {
         Self {
             info,
             source_id,

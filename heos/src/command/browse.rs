@@ -8,6 +8,7 @@ use url::Url;
 
 use crate::command::impl_command;
 use crate::data::maybe_range;
+use crate::data::media::*;
 use crate::data::option::*;
 use crate::data::player::*;
 use crate::data::source::*;
@@ -92,7 +93,7 @@ pub struct Browse {
     #[serde(serialize_with = "maybe_range::serialize")]
     pub range: Option<RangeInclusive<usize>>,
 }
-impl_command!(Browse, "browse", "browse", WithOptions<Vec<SourceItem>>);
+impl_command!(Browse, "browse", "browse", WithOptions<Vec<MediaItem>>);
 
 /// Retrieve all valid types of search criteria for a source.
 ///
