@@ -1,13 +1,15 @@
+use egui_async::bind::MaybeSend;
 use egui_async::Bind;
 use heos::command::group::SetGroup;
+use heos::command::player::MoveQueue;
 use heos::command::{CommandError, CommandErrorCode};
 use heos::data::group::GroupRole;
 use heos::data::player::{PlayState, PlayerId, RepeatMode, ShuffleMode};
-use heos::state::playable::{Playable, PlayableId};
+use heos::data::queue::QueueId;
+use heos::state::playable::{Playable, PlayableId, PlayableInfo};
 use heos::{HeosConnection, Stateful};
 use std::iter;
 use std::sync::Arc;
-use egui_async::bind::MaybeSend;
 use tracing::{debug, warn};
 
 use crate::screen::media_bar::ControlButton;
@@ -171,6 +173,23 @@ impl Actions {
         let heos = self.heos.clone();
         self.add_bind(async move {
             Self::remove_from_any_group_impl(&heos, player_id).await
+        });
+    }
+
+    pub fn move_queue(&mut self, playable_id: PlayableId, from: QueueId, to: QueueId) {
+        debug!(?playable_id, ?from, ?to, "Moving queued track");
+        let heos = self.heos.clone();
+        self.add_bind(async move {
+            let playable = Self::try_playable(&heos, playable_id).await?;
+            let player_id = match playable.info() {
+                PlayableInfo::Group(group) => group.leader().player_id,
+                PlayableInfo::Player(player) => player.player_id,
+            };
+            heos.command(MoveQueue {
+                player_id,
+                src_queue_ids: vec![from],
+                dst_queue_id: to,
+            }).await
         });
     }
 }

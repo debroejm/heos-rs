@@ -13,6 +13,7 @@ macro_rules! asset {
 
 pub mod icons {
     asset!(devices, "icons/devices.png");
+    asset!(queue, "icons/queue.png");
     asset!(next, "icons/next.png");
     asset!(pause, "icons/pause.png");
     asset!(play, "icons/play.png");

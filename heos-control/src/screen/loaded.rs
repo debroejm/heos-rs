@@ -6,10 +6,12 @@ use crate::actions::Actions;
 use crate::assets;
 use crate::screen::devices::Devices;
 use crate::screen::media_bar::MediaBar;
+use crate::screen::queue::QueueScreen;
 use crate::updater::Updater;
 
 enum Screen {
     Devices(Devices),
+    Queue(QueueScreen),
 }
 
 pub struct Loaded {
@@ -58,6 +60,18 @@ impl Loaded {
                         let devices = Devices::new(self.heos.clone(), updater);
                         self.screen = Screen::Devices(devices);
                     }
+
+                    let playable_id = self.media_bar.playable_id();
+                    let queue_button = Button::new(assets::icons::queue::image())
+                        .image_tint_follows_text_color(true)
+                        .fill(Rgba::from_luminance_alpha(0.0, 0.0))
+                        .stroke(Stroke::NONE);
+                    if ui.add_enabled(playable_id.is_some(), queue_button).clicked() {
+                        if let Some(playable_id) = playable_id {
+                            let queue = QueueScreen::new(self.heos.clone(), updater, playable_id);
+                            self.screen = Screen::Queue(queue);
+                        }
+                    }
                 });
             });
     }
@@ -74,6 +88,9 @@ impl Loaded {
                     self.media_bar.set_active(updater, selected);
                 }
             },
+            Screen::Queue(queue) => {
+                queue.update(ctx, actions);
+            }
         }
     }
 }

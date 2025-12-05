@@ -11,6 +11,7 @@ async-trait = { workspace = true }
 eframe = "0.33.0"
 egui = "0.33.0"
 egui-async = "0.2.1"
+egui_dnd = "0.14.0"
 egui_extras = { version = "0.33.0", features = ["all_loaders"] }
 emath = "0.33.0"
 futures-lite = "2.6"
