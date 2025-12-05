@@ -11,8 +11,9 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use tracing::warn;
 use heos::data::media::MediaItem;
+
 use crate::assets;
-use crate::util::Updater;
+use crate::updater::Updater;
 use crate::widgets::MediaDisplay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,8 +299,8 @@ impl ActiveData {
 enum State {
     Inactive,
     Active {
+        playable_id: PlayableId,
         data: Arc<Mutex<Bind<ActiveData, ()>>>,
-        updater: Updater,
     },
 }
 
@@ -343,11 +344,7 @@ impl MediaBar {
         }
     }
 
-    pub fn set_active(&mut self, playable_id: PlayableId) {
-        if let State::Active { updater, .. } = &mut self.state {
-            updater.stop();
-        }
-
+    pub fn set_active(&mut self, updater: &Updater, playable_id: PlayableId) {
         let data = {
             let heos = self.heos.clone();
             let mut data_bind = Bind::new(false);
@@ -355,45 +352,31 @@ impl MediaBar {
             Arc::new(Mutex::new(data_bind))
         };
 
-        let updater = {
-            let heos = self.heos.clone();
-            let data = Arc::downgrade(&data);
-            Updater::new(heos.clone(), move |event| {
-                let heos = heos.clone();
-                let data = data.clone();
-                async move {
-                    match event {
-                        Event::PlayersChanged |
-                        Event::GroupsChanged |
-                        Event::PlayerStateChanged(_) |
-                        Event::PlayerNowPlayingChanged(_) |
-                        Event::PlayerNowPlayingProgress(_) |
-                        Event::PlayerPlaybackError(_) |
-                        Event::PlayerQueueChanged(_) |
-                        Event::PlayerVolumeChanged(_) |
-                        Event::PlayerRepeatModeChanged(_) |
-                        Event::PlayerShuffleModeChanged(_) |
-                        Event::GroupVolumeChanged(_) => {
-                            if let Some(data) = data.upgrade() {
-                                let heos = heos.clone();
-                                data.lock().request(async move {
-                                    ActiveData::new(heos, playable_id).await
-                                });
-                                false
-                            } else {
-                                // Nothing to update anymore
-                                true
-                            }
-                        },
-                        _ => false,
-                    }
+        let heos = self.heos.clone();
+        updater.register(
+            &data,
+            move |event| async move {
+                match event {
+                    Event::PlayersChanged |
+                    Event::GroupsChanged |
+                    Event::PlayerStateChanged(_) |
+                    Event::PlayerNowPlayingChanged(_) |
+                    Event::PlayerNowPlayingProgress(_) |
+                    Event::PlayerPlaybackError(_) |
+                    Event::PlayerQueueChanged(_) |
+                    Event::PlayerVolumeChanged(_) |
+                    Event::PlayerRepeatModeChanged(_) |
+                    Event::PlayerShuffleModeChanged(_) |
+                    Event::GroupVolumeChanged(_) => true,
+                    _ => false,
                 }
-            })
-        };
+            },
+            move || ActiveData::new(heos.clone(), playable_id),
+        );
 
         self.state = State::Active {
+            playable_id,
             data,
-            updater,
         }
     }
 
@@ -431,12 +414,11 @@ impl MediaBar {
             .exact_height(Self::MIN_SIZE.y)
             .show(ctx, |ui| self.show(ctx, ui));
     }
-}
-
-impl Drop for MediaBar {
-    fn drop(&mut self) {
-        if let State::Active { updater, .. } = &mut self.state {
-            updater.stop();
+    
+    pub fn playable_id(&self) -> Option<PlayableId> {
+        match &self.state {
+            State::Inactive => None,
+            State::Active { playable_id, .. } => Some(*playable_id),
         }
     }
 }

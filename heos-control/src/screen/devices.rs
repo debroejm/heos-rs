@@ -17,7 +17,7 @@ use std::iter;
 use std::sync::Arc;
 use tracing::debug;
 
-use crate::util::Updater;
+use crate::updater::Updater;
 use crate::widgets::MediaDisplay;
 
 pub struct SubDevice<'a> {
@@ -214,7 +214,6 @@ impl<'a> Widget for Device<'a> {
 pub struct Devices {
     heos: Arc<HeosConnection<Stateful>>,
     devices: Arc<Mutex<Bind<Vec<PlayableSnapshot>, Infallible>>>,
-    updater: Updater,
     actions: Vec<Bind<(), CommandError>>,
 }
 
@@ -234,7 +233,7 @@ impl Devices {
         Ok(snapshots)
     }
 
-    pub fn new(heos: Arc<HeosConnection<Stateful>>) -> Self {
+    pub fn new(heos: Arc<HeosConnection<Stateful>>, updater: &Updater) -> Self {
         let devices = {
             let heos = heos.clone();
             let mut devices_bind = Bind::new(false);
@@ -242,37 +241,24 @@ impl Devices {
             Arc::new(Mutex::new(devices_bind))
         };
 
-        let updater = {
+        {
             let heos = heos.clone();
-            let devices = Arc::downgrade(&devices);
-            Updater::new(heos.clone(), move |event| {
-                let heos = heos.clone();
-                let devices = devices.clone();
-                async move {
+            updater.register(
+                &devices,
+                move |event| async move {
                     match event {
                         Event::PlayersChanged |
-                        Event::GroupsChanged => {
-                            if let Some(devices) = devices.upgrade() {
-                                let heos = heos.clone();
-                                devices.lock().request(async move {
-                                    Self::query_devices(heos).await
-                                });
-                                false
-                            } else {
-                                // Nothing to update anymore
-                                true
-                            }
-                        },
+                        Event::GroupsChanged => true,
                         _ => false,
                     }
-                }
-            })
-        };
+                },
+                move || Self::query_devices(heos.clone()),
+            )
+        }
 
         Self {
             heos,
             devices,
-            updater,
             actions: vec![],
         }
     }
@@ -438,11 +424,5 @@ impl Devices {
             .frame(Frame::central_panel(&ctx.style())
                 .fill(ctx.style().visuals.extreme_bg_color))
             .show(ctx, |ui| self.show(ui)).inner
-    }
-}
-
-impl Drop for Devices {
-    fn drop(&mut self) {
-        self.updater.stop();
     }
 }

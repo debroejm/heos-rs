@@ -1,10 +1,11 @@
-use egui::{Context, Margin, Rgba, Stroke};
+use egui::{Button, Context, Margin, Rgba, Stroke};
 use heos::{HeosConnection, Stateful};
 use std::sync::Arc;
 
 use crate::assets;
 use crate::screen::devices::Devices;
 use crate::screen::media_bar::MediaBar;
+use crate::updater::Updater;
 
 enum Screen {
     Devices(Devices),
@@ -17,9 +18,9 @@ pub struct Loaded {
 }
 
 impl Loaded {
-    pub fn new(heos: Arc<HeosConnection<Stateful>>) -> Self {
+    pub fn new(heos: Arc<HeosConnection<Stateful>>, updater: &Updater) -> Self {
         let media_bar = MediaBar::new(heos.clone());
-        let devices = Devices::new(heos.clone());
+        let devices = Devices::new(heos.clone(), updater);
         let screen = Screen::Devices(devices);
 
         Self {
@@ -29,7 +30,7 @@ impl Loaded {
         }
     }
 
-    fn side_panel(&mut self, ctx: &Context) {
+    fn side_panel(&mut self, ctx: &Context, updater: &Updater) {
         egui::SidePanel::left("navigation")
             .resizable(false)
             .exact_width(48.0)
@@ -48,28 +49,28 @@ impl Loaded {
             .show_separator_line(false)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
-                    let devices_button = egui::Button::new(assets::icons::devices::image())
+                    let devices_button = Button::new(assets::icons::devices::image())
                         .image_tint_follows_text_color(true)
                         .fill(Rgba::from_luminance_alpha(0.0, 0.0))
                         .stroke(Stroke::NONE);
                     if ui.add(devices_button).clicked() {
-                        let devices = Devices::new(self.heos.clone());
+                        let devices = Devices::new(self.heos.clone(), updater);
                         self.screen = Screen::Devices(devices);
                     }
                 });
             });
     }
 
-    pub fn update(&mut self, ctx: &Context) {
+    pub fn update(&mut self, ctx: &Context, updater: &Updater) {
         self.media_bar.update(ctx);
-        self.side_panel(ctx);
+        self.side_panel(ctx, updater);
 
         match &mut self.screen {
             Screen::Devices(devices) => {
                 let selected = devices.update(ctx);
 
                 if let Some(selected) = selected {
-                    self.media_bar.set_active(selected);
+                    self.media_bar.set_active(updater, selected);
                 }
             },
         }
