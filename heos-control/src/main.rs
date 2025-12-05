@@ -129,6 +129,7 @@ impl eframe::App for HeosControlApp {
                 }
             },
             State::Active { mut loaded, updater } => {
+                updater.check_queued();
                 loaded.update(ctx, &updater);
 
                 if ctx.input(|i| i.viewport().close_requested()) {
