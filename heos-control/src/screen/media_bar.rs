@@ -1,8 +1,8 @@
 use egui::style::HandleShape;
 use egui::{Align, Button, Color32, Context, Direction, Frame, Label, Layout, RichText, Slider, Stroke, Ui, UiBuilder};
 use egui_async::Bind;
-use heos::command::{CommandError, CommandErrorCode};
 use heos::data::event::Event;
+use heos::data::media::MediaItem;
 use heos::data::player::{PlayState, RepeatMode, ShuffleMode};
 use heos::data::queue::NowPlayingInfo;
 use heos::state::playable::{PlayableId, PlayableSnapshot};
@@ -10,14 +10,14 @@ use heos::{HeosConnection, Stateful};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use tracing::warn;
-use heos::data::media::MediaItem;
 
+use crate::actions::Actions;
 use crate::assets;
 use crate::updater::Updater;
 use crate::widgets::MediaDisplay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ControlButton {
+pub enum ControlButton {
     PlayPause,
     Next,
     Prev,
@@ -26,9 +26,7 @@ enum ControlButton {
 }
 
 struct ActiveData {
-    heos: Arc<HeosConnection<Stateful>>,
     snapshot: PlayableSnapshot,
-    tasks: Vec<Bind<(), CommandError>>,
 }
 
 impl ActiveData {
@@ -48,9 +46,7 @@ impl ActiveData {
         };
 
         Ok(Self {
-            heos,
             snapshot,
-            tasks: vec![],
         })
     }
 
@@ -63,7 +59,7 @@ impl ActiveData {
         }
     }
 
-    fn control_button(&mut self, ui: &mut Ui, button_type: ControlButton) {
+    fn control_button(&mut self, ui: &mut Ui, actions: &mut Actions, button_type: ControlButton) {
         let (image, size, weak) = match button_type {
             ControlButton::PlayPause => {
                 let image = match self.snapshot.play_state {
@@ -99,60 +95,7 @@ impl ActiveData {
                 style.visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, weak_color);
             }
             if ui.add(button).clicked() {
-                let heos = self.heos.clone();
-                let snapshot = self.snapshot.clone();
-                let mut task = Bind::new(true);
-                task.request(async move {
-                    let playable = match heos.playable(snapshot.id).await {
-                        Some(playable) => playable,
-                        None => {
-                            warn!(
-                            id = %snapshot.id,
-                            error = "no player found for ID",
-                            "Failed to play/pause",
-                        );
-                            return Err(CommandError::Failure {
-                                code: CommandErrorCode::InvalidId,
-                                text: format!("No player found for ID ({})", snapshot.id),
-                            })
-                        }
-                    };
-
-                    let result = match button_type {
-                        ControlButton::PlayPause => {
-                            playable.set_play_state(match snapshot.play_state {
-                                PlayState::Stop | PlayState::Pause => PlayState::Play,
-                                PlayState::Play => PlayState::Pause,
-                            }).await
-                        },
-                        ControlButton::Next => playable.play_next().await,
-                        ControlButton::Prev => playable.play_previous().await,
-                        ControlButton::Repeat => playable.set_play_mode(
-                            Some(match snapshot.repeat {
-                                RepeatMode::Off => RepeatMode::One,
-                                RepeatMode::One => RepeatMode::All,
-                                RepeatMode::All => RepeatMode::Off,
-                            }),
-                            None,
-                        ).await,
-                        ControlButton::Shuffle => playable.set_play_mode(
-                            None,
-                            Some(match snapshot.shuffle {
-                                ShuffleMode::Off => ShuffleMode::On,
-                                ShuffleMode::On => ShuffleMode::Off,
-                            }),
-                        ).await,
-                    };
-
-                    match result {
-                        Ok(_) => Ok(()),
-                        Err(error) => {
-                            warn!(id = %snapshot.id, ?button_type, ?error, "Operation failed");
-                            Err(error)
-                        }
-                    }
-                });
-                self.tasks.push(task);
+                actions.media_control(self.snapshot.id, button_type);
             }
         });
     }
@@ -195,7 +138,7 @@ impl ActiveData {
         }
     }
 
-    fn controls(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn controls(&mut self, ctx: &Context, ui: &mut Ui, actions: &mut Actions) {
         let available = ui.available_size();
         let top_left = ui.cursor().min;
         let right_bottom = ui.max_rect().right_bottom();
@@ -223,11 +166,11 @@ impl ActiveData {
         song_progress.set_height(MediaBar::SONG_PROGRESS_HEIGHT);
 
         buttons.style_mut().spacing.item_spacing = MediaBar::BUTTON_SPACING;
-        self.control_button(&mut buttons, ControlButton::Repeat);
-        self.control_button(&mut buttons, ControlButton::Prev);
-        self.control_button(&mut buttons, ControlButton::PlayPause);
-        self.control_button(&mut buttons, ControlButton::Next);
-        self.control_button(&mut buttons, ControlButton::Shuffle);
+        self.control_button(&mut buttons, actions, ControlButton::Repeat);
+        self.control_button(&mut buttons, actions, ControlButton::Prev);
+        self.control_button(&mut buttons, actions, ControlButton::PlayPause);
+        self.control_button(&mut buttons, actions, ControlButton::Next);
+        self.control_button(&mut buttons, actions, ControlButton::Shuffle);
 
         self.song_progress(ctx, &mut song_progress);
 
@@ -237,15 +180,11 @@ impl ActiveData {
         ));
     }
 
-    fn show(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn show(&mut self, ctx: &Context, ui: &mut Ui, actions: &mut Actions) {
         let spacing = ui.spacing().item_spacing;
         let available = ui.available_size();
         let top_left = ui.cursor().min;
         let bottom = ui.max_rect().right_bottom().y;
-
-        self.tasks.retain_mut(|task| {
-            !task.is_finished()
-        });
 
         let (corner_width, controls_width) = if available.x < (MediaBar::CONTROLS_BUTTONS_SIZE.x + MediaBar::MAX_CORNER_WIDTH * 2.0) {
             ((available.x - MediaBar::CONTROLS_BUTTONS_SIZE.x) / 2.0, MediaBar::CONTROLS_BUTTONS_SIZE.x)
@@ -287,7 +226,7 @@ impl ActiveData {
         volume.set_width(corner_width);
 
         self.song_info(&mut info);
-        self.controls(ctx, &mut controls);
+        self.controls(ctx, &mut controls, actions);
 
         ui.advance_cursor_after_rect(emath::Rect::from_min_size(
             top_left,
@@ -380,7 +319,7 @@ impl MediaBar {
         }
     }
 
-    fn show(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn show(&mut self, ctx: &Context, ui: &mut Ui, actions: &mut Actions) {
         match &mut self.state {
             State::Inactive => {
                 ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
@@ -390,7 +329,7 @@ impl MediaBar {
             State::Active { data, .. } => {
                 if let Some(result) = data.lock().read_mut() {
                     if let Ok(data) = result {
-                        data.show(ctx, ui);
+                        data.show(ctx, ui, actions);
                     } else {
                         ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
                             ui.heading(RichText::new("ERROR").color(Color32::RED));
@@ -405,14 +344,14 @@ impl MediaBar {
         }
     }
 
-    pub fn update(&mut self, ctx: &Context) {
+    pub fn update(&mut self, ctx: &Context, actions: &mut Actions) {
         egui::TopBottomPanel::bottom("media_bar")
             .resizable(false)
             .frame(Frame::side_top_panel(&ctx.style())
                 .fill(ctx.style().visuals.panel_fill.gamma_multiply(1.2)))
             .show_separator_line(false)
             .exact_height(Self::MIN_SIZE.y)
-            .show(ctx, |ui| self.show(ctx, ui));
+            .show(ctx, |ui| self.show(ctx, ui, actions));
     }
     
     pub fn playable_id(&self) -> Option<PlayableId> {

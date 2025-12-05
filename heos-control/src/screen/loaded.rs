@@ -2,6 +2,7 @@ use egui::{Button, Context, Margin, Rgba, Stroke};
 use heos::{HeosConnection, Stateful};
 use std::sync::Arc;
 
+use crate::actions::Actions;
 use crate::assets;
 use crate::screen::devices::Devices;
 use crate::screen::media_bar::MediaBar;
@@ -61,13 +62,13 @@ impl Loaded {
             });
     }
 
-    pub fn update(&mut self, ctx: &Context, updater: &Updater) {
-        self.media_bar.update(ctx);
+    pub fn update(&mut self, ctx: &Context, actions: &mut Actions, updater: &Updater) {
+        self.media_bar.update(ctx, actions);
         self.side_panel(ctx, updater);
 
         match &mut self.screen {
             Screen::Devices(devices) => {
-                let selected = devices.update(ctx);
+                let selected = devices.update(ctx, actions);
 
                 if let Some(selected) = selected {
                     self.media_bar.set_active(updater, selected);

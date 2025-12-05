@@ -2,21 +2,18 @@ use eframe::epaint::text::TextWrapMode;
 use egui::{Context, FontSelection, Frame, Grid, Label, Layout, Response, RichText, ScrollArea, Sense, TextStyle, Ui, UiBuilder, Widget, WidgetText};
 use egui_async::Bind;
 use emath::Align;
-use heos::command::group::SetGroup;
-use heos::command::CommandError;
 use heos::data::event::Event;
-use heos::data::group::{GroupPlayer, GroupRole};
+use heos::data::group::GroupPlayer;
 use heos::data::media::MediaItem;
 use heos::data::player::PlayerId;
 use heos::data::queue::NowPlayingInfo;
-use heos::state::playable::{Playable, PlayableId, PlayableInfo, PlayableSnapshot};
+use heos::state::playable::{PlayableId, PlayableInfo, PlayableSnapshot};
 use heos::{HeosConnection, Stateful};
 use parking_lot::Mutex;
 use std::convert::Infallible;
-use std::iter;
 use std::sync::Arc;
-use tracing::debug;
 
+use crate::actions::Actions;
 use crate::updater::Updater;
 use crate::widgets::MediaDisplay;
 
@@ -212,9 +209,7 @@ impl<'a> Widget for Device<'a> {
 }
 
 pub struct Devices {
-    heos: Arc<HeosConnection<Stateful>>,
     devices: Arc<Mutex<Bind<Vec<PlayableSnapshot>, Infallible>>>,
-    actions: Vec<Bind<(), CommandError>>,
 }
 
 impl Devices {
@@ -241,115 +236,24 @@ impl Devices {
             Arc::new(Mutex::new(devices_bind))
         };
 
-        {
-            let heos = heos.clone();
-            updater.register(
-                &devices,
-                move |event| async move {
-                    match event {
-                        Event::PlayersChanged |
-                        Event::GroupsChanged => true,
-                        _ => false,
-                    }
-                },
-                move || Self::query_devices(heos.clone()),
-            )
-        }
+        updater.register(
+            &devices,
+            move |event| async move {
+                match event {
+                    Event::PlayersChanged |
+                    Event::GroupsChanged => true,
+                    _ => false,
+                }
+            },
+            move || Self::query_devices(heos.clone()),
+        );
 
         Self {
-            heos,
             devices,
-            actions: vec![],
         }
     }
 
-    fn add_to_group(&mut self, playable_id: PlayableId, new_player_id: PlayerId) {
-        debug!(target_id = ?playable_id, ?new_player_id, "Adding player to group");
-        let heos = self.heos.clone();
-        let mut bind = Bind::new(true);
-        bind.request(async move {
-            // Remove from any existing groups first
-            Self::remove_from_any_group_impl(&heos, new_player_id).await?;
-
-            let Some(playable) = heos.playable(playable_id).await else {
-                return Ok(())
-            };
-
-            match playable {
-                Playable::Group(group) => {
-                    if group.group.info().player(new_player_id).is_some() {
-                        // Already in the group
-                        return Ok(())
-                    }
-                    let player_ids = iter::once(group.leader_id())
-                        .chain(group.group.info().players.iter()
-                            .filter(|player| player.role != GroupRole::Leader)
-                            .map(|player| player.player_id))
-                        .chain(iter::once(new_player_id))
-                        .collect::<Vec<_>>();
-                    heos.command(SetGroup {
-                        player_ids,
-                    }).await?;
-                },
-                Playable::Player(player) => {
-                    heos.command(SetGroup {
-                        player_ids: vec![player.info().player_id, new_player_id],
-                    }).await?;
-                },
-            }
-
-            Ok(())
-        });
-        self.actions.push(bind);
-    }
-
-    async fn remove_from_any_group_impl(
-        heos: &Arc<HeosConnection<Stateful>>,
-        player_id: PlayerId,
-    ) -> Result<(), CommandError> {
-        for group in heos.groups().await {
-            if let Some(group_player) = group.info().player(player_id) {
-                if group_player.role == GroupRole::Leader {
-                    let player_ids = group.info().players.iter()
-                        .filter(|player| player.role != GroupRole::Leader)
-                        .map(|player| player.player_id)
-                        .collect::<Vec<_>>();
-                    // Delete the group first
-                    heos.command(SetGroup {
-                        player_ids: vec![group_player.player_id],
-                    }).await?;
-                    // Now recreate the group with the remaining players, if necessary
-                    if player_ids.len() > 1 {
-                        heos.command(SetGroup {
-                            player_ids,
-                        }).await?;
-                    }
-                } else {
-                    let player_ids = iter::once(group.leader_id())
-                        .chain(group.info().players.iter()
-                            .filter(|player| player.role != GroupRole::Leader && player.player_id != player_id)
-                            .map(|player| player.player_id))
-                        .collect::<Vec<_>>();
-                    heos.command(SetGroup {
-                        player_ids,
-                    }).await?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn remove_from_any_group(&mut self, player_id: PlayerId) {
-        debug!(?player_id, "Removing player from any groups");
-        let heos = self.heos.clone();
-        let mut bind = Bind::new(true);
-        bind.request(async move {
-            Self::remove_from_any_group_impl(&heos, player_id).await
-        });
-        self.actions.push(bind);
-    }
-
-    fn show(&mut self, ui: &mut Ui) -> Option<PlayableId> {
+    fn show(&mut self, ui: &mut Ui, actions: &mut Actions) -> Option<PlayableId> {
         let mut selected = None;
 
         ui.spacing_mut().scroll.foreground_color = true;
@@ -400,29 +304,20 @@ impl Devices {
         }
 
         for (playable_id, new_player_id) in group_adds {
-            self.add_to_group(playable_id, new_player_id);
+            actions.add_to_group(playable_id, new_player_id);
         }
 
         for player_id in group_removes {
-            self.remove_from_any_group(player_id);
+            actions.remove_from_any_group(player_id);
         }
-
-        self.actions.retain_mut(|action| {
-            if let Some(_) = action.take() {
-                // TODO create a popup if there is an error
-                false
-            } else {
-                true
-            }
-        });
 
         selected
     }
 
-    pub fn update(&mut self, ctx: &Context) -> Option<PlayableId> {
+    pub fn update(&mut self, ctx: &Context, actions: &mut Actions) -> Option<PlayableId> {
         egui::CentralPanel::default()
             .frame(Frame::central_panel(&ctx.style())
                 .fill(ctx.style().visuals.extreme_bg_color))
-            .show(ctx, |ui| self.show(ui)).inner
+            .show(ctx, |ui| self.show(ui, actions)).inner
     }
 }

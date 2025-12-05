@@ -1,19 +1,21 @@
-use std::convert::Infallible;
 use eframe::{CreationContext, Frame};
 use egui::{Context, RichText, ViewportCommand};
 use egui_async::{Bind, EguiAsyncPlugin};
 use heos::{HeosConnection, Stateful};
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
+use crate::actions::Actions;
 use crate::screen::loaded::Loaded;
 use crate::screen::media_bar::MediaBar;
 use crate::updater::Updater;
 
-mod screen;
+mod actions;
 mod assets;
+mod screen;
 mod updater;
 mod widgets;
 
@@ -35,10 +37,12 @@ enum State {
     Init(Bind<Arc<HeosConnection<Stateful>>, String>),
     Active {
         loaded: Loaded,
+        actions: Actions,
         updater: Updater,
     },
     Errored(String),
     Exiting {
+        actions: Actions,
         update_bind: Bind<(), Infallible>,
     },
     Uninitialized,
@@ -108,11 +112,13 @@ impl eframe::App for HeosControlApp {
                             Self::show_spinner(ctx);
                             ctx.request_repaint();
 
+                            let actions = Actions::new(heos.clone());
                             let updater = Updater::new(heos.clone());
                             let loaded = Loaded::new(heos, &updater);
 
                             State::Active {
                                 loaded,
+                                actions,
                                 updater,
                             }
                         },
@@ -128,19 +134,22 @@ impl eframe::App for HeosControlApp {
                     },
                 }
             },
-            State::Active { mut loaded, updater } => {
+            State::Active { mut loaded, mut actions, updater } => {
                 updater.check_queued();
-                loaded.update(ctx, &updater);
+                loaded.update(ctx, &mut actions, &updater);
+                actions.check_binds();
 
                 if ctx.input(|i| i.viewport().close_requested()) {
                     ctx.send_viewport_cmd(ViewportCommand::CancelClose);
                     let update_bind = updater.into_bind();
                     State::Exiting {
+                        actions,
                         update_bind,
                     }
                 } else {
                     State::Active {
                         loaded,
+                        actions,
                         updater,
                     }
                 }
@@ -149,11 +158,12 @@ impl eframe::App for HeosControlApp {
                 Self::show_error(ctx, &msg);
                 State::Errored(msg)
             },
-            State::Exiting { mut update_bind } => {
-                if update_bind.is_finished() {
+            State::Exiting { mut actions, mut update_bind } => {
+                if update_bind.is_finished() && actions.check_binds() {
                     ctx.send_viewport_cmd(ViewportCommand::Close);
                 }
                 State::Exiting {
+                    actions,
                     update_bind,
                 }
             },
