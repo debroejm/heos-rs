@@ -23,6 +23,7 @@ jobs:
 
   upload-assets:
     needs: create-release
+    if: startsWith(github.ref, 'refs/tags/heos-control-v')
     strategy:
       matrix:
         include:
