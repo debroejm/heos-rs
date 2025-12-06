@@ -80,6 +80,7 @@ impl_command!(GetGroupInfo, "group", "get_group_info", GroupInfo);
 /// Create a new group
 /// ```
 /// use assert_matches::assert_matches;
+/// use assert_unordered::assert_eq_unordered;
 /// # use heos::ConnectError;
 /// use heos::HeosConnection;
 /// use heos::command::group::{GetGroupInfo, SetGroup};
@@ -100,7 +101,7 @@ impl_command!(GetGroupInfo, "group", "get_group_info", GroupInfo);
 /// }).await?;
 /// let group_id = assert_matches!(result, SetGroupResult::CreatedOrModified { group_id, .. } => group_id);
 /// let group = heos.command(GetGroupInfo { group_id }).await?;
-/// assert_eq!(group.players, vec![
+/// assert_eq_unordered!(group.players, vec![
 ///     GroupPlayer {
 ///         name: "Player42".to_string(),
 ///         player_id: PlayerId::from(42),
@@ -119,6 +120,7 @@ impl_command!(GetGroupInfo, "group", "get_group_info", GroupInfo);
 /// Modify members of an existing group
 /// ```
 /// use assert_matches::assert_matches;
+/// use assert_unordered::assert_eq_unordered;
 /// # use heos::ConnectError;
 /// use heos::HeosConnection;
 /// use heos::command::group::{GetGroupInfo, SetGroup};
@@ -142,7 +144,7 @@ impl_command!(GetGroupInfo, "group", "get_group_info", GroupInfo);
 /// }).await?;
 /// let group_id = assert_matches!(result, SetGroupResult::CreatedOrModified { group_id, .. } => group_id);
 /// let group = heos.command(GetGroupInfo { group_id }).await?;
-/// assert_eq!(group.players, vec![
+/// assert_eq_unordered!(group.players, vec![
 ///     GroupPlayer {
 ///         name: "Player1".to_string(),
 ///         player_id: PlayerId::from(1),
