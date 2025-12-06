@@ -19,6 +19,7 @@ heos = { workspace = true }
 # This is used to configure what image loaders are available to egui_extra
 image = { version = "0.25.8", features = ["png", "jpeg", "webp"]}
 parking_lot = { workspace = true }
+strum = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
