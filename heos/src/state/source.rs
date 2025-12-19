@@ -6,12 +6,12 @@ use tokio::sync::{
     RwLockReadGuard as AsyncRwLockReadGuard,
 };
 
+use crate::channel::Channel;
 use crate::command::browse::*;
-use crate::command::CommandError;
+use crate::command::{Command, CommandError};
+use crate::data::media::{AlbumMetadata, MediaItem, MediaItemsResponse};
 use crate::data::option::*;
 use crate::data::source::*;
-use crate::channel::Channel;
-use crate::data::media::{AlbumMetadata, MediaItem, MediaItemsResponse};
 use crate::state::{locked_data_iter, FromLockedData};
 
 #[derive(Debug)]
@@ -67,21 +67,51 @@ impl<'a> Source<'a> {
         &self.data.info
     }
 
+    async fn retrieve_all<C>(
+        &self,
+        cmd_fn: impl Fn(Option<RangeInclusive<usize>>) -> C,
+    ) -> Result<WithOptions<Vec<MediaItem>>, CommandError>
+    where
+        C: Command<Response=WithOptions<MediaItemsResponse>>,
+    {
+        let response = self.channel.lock().await
+            .send_command(cmd_fn(None)).await?;
+
+        let total_count = response.value.count;
+        let mut all_items = response.value.items;
+        let options = response.options;
+        let batch_size = all_items.len();
+
+        while all_items.len() < total_count {
+            let current_count = all_items.len();
+            let response = self.channel.lock().await
+                .send_command(cmd_fn(Some(current_count..=(current_count+batch_size-1)))).await?;
+            all_items.extend(response.value.items);
+        }
+
+        Ok(WithOptions {
+            value: all_items,
+            options,
+        })
+    }
+
     /// Browse a top-level view of music for this source.
     ///
     /// # Errors
     ///
     /// Errors if sending a [Browse] command errors.
-    pub async fn browse(&self) -> Result<WithOptions<MediaItemsResponse>, CommandError> {
-        self.channel.lock().await
-            .send_command(Browse {
-                source_id: self.data.info.source_id,
-                container_id: None,
-                range: None,
-            }).await
+    pub async fn browse(&self) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
+        let source_id = self.data.info.source_id;
+        self.retrieve_all(move |range| Browse {
+            source_id,
+            container_id: None,
+            range,
+        }).await
     }
 
     /// Browse a specific container of music for this source.
+    ///
+    /// This will repeatedly send commands until all music for the specified container is retrieved.
     ///
     /// # Errors
     ///
@@ -89,14 +119,31 @@ impl<'a> Source<'a> {
     pub async fn browse_container(
         &self,
         container_id: impl Into<String>,
-        range: Option<RangeInclusive<usize>>
+    ) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
+        let source_id = self.data.info.source_id;
+        let container_id = container_id.into();
+        self.retrieve_all(move |range| Browse {
+            source_id,
+            container_id: Some(container_id.clone()),
+            range,
+        }).await
+    }
+
+    /// Browse a specific container of music for this source, limited to the specified range.
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [Browse] command errors.
+    pub async fn browse_container_range(
+        &self,
+        container_id: impl Into<String>,
+        range: RangeInclusive<usize>,
     ) -> Result<WithOptions<MediaItemsResponse>, CommandError> {
-        self.channel.lock().await
-            .send_command(Browse {
-                source_id: self.data.info.source_id,
-                container_id: Some(container_id.into()),
-                range,
-            }).await
+        self.channel.lock().await.send_command(Browse {
+            source_id: self.data.info.source_id,
+            container_id: Some(container_id.into()),
+            range: Some(range),
+        }).await
     }
 
     /// Retrieve valid search criteria for this source.
@@ -115,6 +162,8 @@ impl<'a> Source<'a> {
     ///
     /// `criteria` should be a criteria ID yielded by [Self::search_criteria()].
     ///
+    /// This will repeatedly send commands until all music for the specified search is retrieved.
+    ///
     /// # Errors
     ///
     /// Errors if sending a [Search] command errors.
@@ -123,43 +172,35 @@ impl<'a> Source<'a> {
         search: impl Into<String>,
         criteria: CriteriaId,
     ) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
-        self.search_impl(search.into(), criteria).await
+        let source_id = self.data.info.source_id;
+        let search = search.into();
+        self.retrieve_all(move |range| Search {
+            source_id,
+            search: search.clone(),
+            criteria,
+            range,
+        }).await
     }
 
-    async fn search_impl(
+    /// Search this source for music, limited to the specified range.
+    ///
+    /// `criteria` should be a criteria ID yielded by [Self::search_criteria()].
+    ///
+    /// # Errors
+    ///
+    /// Errors if sending a [Search] command errors.
+    pub async fn search_range(
         &self,
-        search: String,
+        search: impl Into<String>,
         criteria: CriteriaId,
-    ) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
-        let mut all_items = vec![];
-        let mut options = vec![];
-        loop {
-            let response = self.channel.lock().await
-                .send_command(Search {
-                    source_id: self.data.info.source_id,
-                    search: search.clone(),
-                    criteria,
-                    range: None,
-                }).await?;
-
-            if options.is_empty() {
-                options = response.options;
-            }
-            let results = response.value;
-
-            if results.items.is_empty() {
-                break
-            }
-
-            all_items.extend(results.items);
-            if results.count != 0 && all_items.len() >= results.count {
-                break
-            }
-        }
-        Ok(WithOptions {
-            value: all_items,
-            options,
-        })
+        range: RangeInclusive<usize>,
+    ) -> Result<WithOptions<MediaItemsResponse>, CommandError> {
+        self.channel.lock().await.send_command(Search {
+            source_id: self.data.info.source_id,
+            search: search.into(),
+            criteria,
+            range: Some(range),
+        }).await
     }
 
     /// Rename a playlist belonging to this source.
