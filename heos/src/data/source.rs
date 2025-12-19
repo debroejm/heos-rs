@@ -29,10 +29,6 @@ use strum::EnumString;
 use url::Url;
 
 use super::*;
-use crate::command::CommandError;
-use crate::data::media::MediaItem;
-use crate::data::option::impl_has_options;
-use crate::data::response::RawResponse;
 
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(from = "i64", into = "i64")]
@@ -250,9 +246,6 @@ pub struct SourceInfo {
 impl_try_from_response_payload!(SourceInfo);
 impl_try_from_response_payload!(Vec<SourceInfo>);
 
-impl_has_options!(Vec<MediaItem>, "browse");
-impl_try_from_response_payload!(Vec<MediaItem>);
-
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(from = "i64", into = "i64")]
 pub enum CriteriaId {
@@ -352,43 +345,3 @@ pub struct SearchCriteria {
     pub search_prefix: Option<String>,
 }
 impl_try_from_response_payload!(Vec<SearchCriteria>);
-
-/// Results of using a [Search](crate::command::browse::Search) command.
-#[derive(Debug)]
-pub struct SearchResults {
-    /// How many total items are available in the container being searched.
-    ///
-    /// If this is larger than the size of `source_items`, the
-    /// [Search](crate::command::browse::Search) command needs to be repeated until all results are
-    /// retrieved.
-    pub count: usize,
-    /// Collection of search results.
-    ///
-    /// This will not be larger than the maximum range specified in the
-    /// [Search](crate::command::browse::Search) command, or the default maximum if a range is not
-    /// specified.
-    pub source_items: Vec<MediaItem>,
-}
-impl_has_options!(SearchResults, "browse");
-
-impl TryFrom<RawResponse> for SearchResults {
-    type Error = CommandError;
-
-    #[inline]
-    fn try_from(response: RawResponse) -> Result<Self, Self::Error> {
-        let qs = qstring::QString::from(response.heos.message.as_str());
-        let count: usize = qs.get("count")
-            .ok_or(CommandError::response_missing_field("message.count"))?
-            .parse()
-            .map_err(|err| CommandError::MalformedResponse(format!(
-                "could not parse 'count': {err:?}",
-            )))?;
-
-        let source_items = Vec::<MediaItem>::try_from(response)?;
-
-        Ok(SearchResults {
-            count,
-            source_items,
-        })
-    }
-}

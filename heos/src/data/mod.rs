@@ -322,4 +322,12 @@ mod yes_no {
             unknown => Err(serde::de::Error::custom(format!("unknown yes/no value: '{unknown}'"))),
         }
     }
+
+    pub fn deserialize_assert_yes<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+        let yes_no_str = String::deserialize(d)?;
+        match yes_no_str.as_str() {
+            "yes" => Ok(true),
+            other => Err(serde::de::Error::custom(format!("expected 'yes' value, got: '{other}'"))),
+        }
+    }
 }

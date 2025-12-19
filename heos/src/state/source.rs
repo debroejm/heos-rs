@@ -11,7 +11,7 @@ use crate::command::CommandError;
 use crate::data::option::*;
 use crate::data::source::*;
 use crate::channel::Channel;
-use crate::data::media::{AlbumMetadata, MediaItem};
+use crate::data::media::{AlbumMetadata, MediaItem, MediaItemsResponse};
 use crate::state::{locked_data_iter, FromLockedData};
 
 #[derive(Debug)]
@@ -72,7 +72,7 @@ impl<'a> Source<'a> {
     /// # Errors
     ///
     /// Errors if sending a [Browse] command errors.
-    pub async fn browse(&self) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
+    pub async fn browse(&self) -> Result<WithOptions<MediaItemsResponse>, CommandError> {
         self.channel.lock().await
             .send_command(Browse {
                 source_id: self.data.info.source_id,
@@ -90,7 +90,7 @@ impl<'a> Source<'a> {
         &self,
         container_id: impl Into<String>,
         range: Option<RangeInclusive<usize>>
-    ) -> Result<WithOptions<Vec<MediaItem>>, CommandError> {
+    ) -> Result<WithOptions<MediaItemsResponse>, CommandError> {
         self.channel.lock().await
             .send_command(Browse {
                 source_id: self.data.info.source_id,
@@ -147,11 +147,11 @@ impl<'a> Source<'a> {
             }
             let results = response.value;
 
-            if results.source_items.is_empty() {
+            if results.items.is_empty() {
                 break
             }
 
-            all_items.extend(results.source_items);
+            all_items.extend(results.items);
             if results.count != 0 && all_items.len() >= results.count {
                 break
             }

@@ -454,7 +454,7 @@ impl<'a> Playable<'a> {
             &self,
             source_id: SourceId,
             container_id: Option<String>,
-            media_id: impl Into<String>,
+            media_id: Option<String>,
             add_to_queue_type: AddToQueueType,
         ) -> Result<(), CommandError>;
     }

@@ -93,7 +93,7 @@ pub struct Browse {
     #[serde(serialize_with = "maybe_range::serialize")]
     pub range: Option<RangeInclusive<usize>>,
 }
-impl_command!(Browse, "browse", "browse", WithOptions<Vec<MediaItem>>);
+impl_command!(Browse, "browse", "browse", WithOptions<MediaItemsResponse>);
 
 /// Retrieve all valid types of search criteria for a source.
 ///
@@ -143,7 +143,7 @@ pub struct Search {
     #[serde(serialize_with = "maybe_range::serialize")]
     pub range: Option<RangeInclusive<usize>>,
 }
-impl_command!(Search, "browse", "search", WithOptions<SearchResults>);
+impl_command!(Search, "browse", "search", WithOptions<MediaItemsResponse>);
 
 /// Play a music "station".
 ///
@@ -235,7 +235,7 @@ impl_command!(PlayUrl, "browse", "play_stream", ());
 ///     player_id: PlayerId::from(42),
 ///     source_id: SourceId::LocalUsbOrDlna,
 ///     container_id: None,
-///     media_id: "new-song-id".to_string(),
+///     media_id: Some("new-song-id".to_string()),
 ///     add_to_queue_type: AddToQueueType::PlayNow,
 /// }).await?;
 /// # Ok(())
@@ -259,7 +259,7 @@ impl_command!(PlayUrl, "browse", "play_stream", ());
 ///     player_id: PlayerId::from(42),
 ///     source_id: SourceId::LocalUsbOrDlna,
 ///     container_id: None,
-///     media_id: "new-song-id".to_string(),
+///     media_id: Some("new-song-id".to_string()),
 ///     add_to_queue_type: AddToQueueType::PlayNext,
 /// }).await?;
 /// # Ok(())
@@ -283,7 +283,7 @@ impl_command!(PlayUrl, "browse", "play_stream", ());
 ///     player_id: PlayerId::from(42),
 ///     source_id: SourceId::LocalUsbOrDlna,
 ///     container_id: None,
-///     media_id: "new-song-id".to_string(),
+///     media_id: Some("new-song-id".to_string()),
 ///     add_to_queue_type: AddToQueueType::AddToEnd,
 /// }).await?;
 /// # Ok(())
@@ -307,7 +307,7 @@ impl_command!(PlayUrl, "browse", "play_stream", ());
 ///     player_id: PlayerId::from(42),
 ///     source_id: SourceId::LocalUsbOrDlna,
 ///     container_id: None,
-///     media_id: "new-song-id".to_string(),
+///     media_id: Some("new-song-id".to_string()),
 ///     add_to_queue_type: AddToQueueType::ReplaceAndPlay,
 /// }).await?;
 /// # Ok(())
@@ -328,7 +328,7 @@ pub struct AddToQueue {
     pub container_id: Option<String>,
     /// Media ID of the music track.
     #[serde(rename = "mid")]
-    pub media_id: String,
+    pub media_id: Option<String>,
     /// The method used to add the music track to the queue.
     #[serde(rename = "aid")]
     pub add_to_queue_type: AddToQueueType,

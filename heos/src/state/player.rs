@@ -491,7 +491,7 @@ impl<'a> Player<'a> {
         &self,
         source_id: SourceId,
         container_id: Option<String>,
-        media_id: impl Into<String>,
+        media_id: Option<String>,
         add_to_queue_type: AddToQueueType,
     ) -> Result<(), CommandError> {
         self.channel.lock().await
@@ -499,7 +499,7 @@ impl<'a> Player<'a> {
                 player_id: self.data.info.player_id,
                 source_id,
                 container_id,
-                media_id: media_id.into(),
+                media_id,
                 add_to_queue_type,
             }).await
     }
