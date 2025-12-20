@@ -39,24 +39,37 @@ impl<'a> ActiveMediaBar<'a> {
     }
 
     fn control_button(&mut self, ui: &mut Ui, actions: &mut Actions, button_type: ControlButton) {
-        let (image, size, weak) = match button_type {
+        let (image, size, weak, enabled) = match button_type {
             ControlButton::PlayPause => {
                 let image = match self.snapshot.play_state {
                     PlayState::Stop | PlayState::Pause => assets::icons::play::image(),
                     PlayState::Play => assets::icons::pause::image(),
                 };
-                (image, MediaBar::PLAY_BUTTON_SIZE, false)
+                (image, MediaBar::PLAY_BUTTON_SIZE, false, true)
             },
-            ControlButton::Next => (assets::icons::next::image(), MediaBar::NEXT_PREV_BUTTON_SIZE, false),
-            ControlButton::Prev => (assets::icons::prev::image(), MediaBar::NEXT_PREV_BUTTON_SIZE, false),
-            ControlButton::Repeat => match self.snapshot.repeat {
-                RepeatMode::Off => (assets::icons::repeat::image(), MediaBar::REPEAT_BUTTON_SIZE, true),
-                RepeatMode::One => (assets::icons::repeat_once::image(), MediaBar::REPEAT_BUTTON_SIZE, false),
-                RepeatMode::All => (assets::icons::repeat::image(), MediaBar::REPEAT_BUTTON_SIZE, false),
+            ControlButton::Next => (assets::icons::next::image(), MediaBar::NEXT_PREV_BUTTON_SIZE, false, true),
+            ControlButton::Prev => {
+                let enabled = match &self.snapshot.now_playing.info {
+                    NowPlayingInfo::Song { .. } => true,
+                    NowPlayingInfo::Station { .. } => false,
+                };
+                (assets::icons::prev::image(), MediaBar::NEXT_PREV_BUTTON_SIZE, false, enabled)
+            },
+            ControlButton::Repeat => match &self.snapshot.now_playing.info {
+                NowPlayingInfo::Song { .. } => match self.snapshot.repeat {
+                    RepeatMode::Off => (assets::icons::repeat::image(), MediaBar::REPEAT_BUTTON_SIZE, true, true),
+                    RepeatMode::One => (assets::icons::repeat_once::image(), MediaBar::REPEAT_BUTTON_SIZE, false, true),
+                    RepeatMode::All => (assets::icons::repeat::image(), MediaBar::REPEAT_BUTTON_SIZE, false, true),
+                },
+                NowPlayingInfo::Station { .. } => (assets::icons::repeat::image(), MediaBar::REPEAT_BUTTON_SIZE, true, false),
             },
             ControlButton::Shuffle => {
                 let weak = self.snapshot.shuffle == ShuffleMode::Off;
-                (assets::icons::shuffle::image(), MediaBar::SHUFFLE_BUTTON_SIZE, weak)
+                let enabled = match &self.snapshot.now_playing.info {
+                    NowPlayingInfo::Song { .. } => true,
+                    NowPlayingInfo::Station { .. } => false,
+                };
+                (assets::icons::shuffle::image(), MediaBar::SHUFFLE_BUTTON_SIZE, weak, enabled)
             },
         };
         let image = image
@@ -73,7 +86,7 @@ impl<'a> ActiveMediaBar<'a> {
                 let weak_color = style.visuals.weak_text_color();
                 style.visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, weak_color);
             }
-            if ui.add(button).clicked() {
+            if ui.add_enabled(enabled, button).clicked() {
                 actions.media_control(self.snapshot.id, button_type);
             }
         });
