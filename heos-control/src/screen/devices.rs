@@ -241,7 +241,8 @@ impl Devices {
             move |event| async move {
                 match event {
                     Event::PlayersChanged |
-                    Event::GroupsChanged => true,
+                    Event::GroupsChanged |
+                    Event::PlayerNowPlayingChanged(_) => true,
                     _ => false,
                 }
             },
