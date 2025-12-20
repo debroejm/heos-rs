@@ -1,6 +1,8 @@
+use eframe::epaint::FontFamily;
 use eframe::{CreationContext, Frame};
-use egui::{Context, RichText, ViewportCommand};
+use egui::{Context, FontId, RichText, TextStyle, ViewportCommand};
 use egui_async::{Bind, EguiAsyncPlugin};
+use heos::data::media::MediaItem;
 use heos::{HeosConnection, Stateful};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -12,6 +14,7 @@ use crate::actions::Actions;
 use crate::screen::loaded::Loaded;
 use crate::screen::media_bar::MediaBar;
 use crate::updater::Updater;
+use crate::widgets::media::MediaTile;
 
 mod actions;
 mod assets;
@@ -71,7 +74,19 @@ impl HeosControlApp {
         egui_extras::install_image_loaders(&ctx.egui_ctx);
 
         // TODO: This might need to move
-        ctx.egui_ctx.send_viewport_cmd(ViewportCommand::MinInnerSize(MediaBar::MIN_SIZE));
+        ctx.egui_ctx.send_viewport_cmd(ViewportCommand::MinInnerSize(emath::vec2(
+            MediaBar::MIN_SIZE.x,
+            // Give some room for everything above the bar
+            MediaBar::MIN_SIZE.y + MediaTile::<MediaItem>::DEFAULT_SIZE + 150.0,
+        )));
+
+        ctx.egui_ctx.all_styles_mut(|style| {
+            let heading_size = style.text_styles[&TextStyle::Heading].size;
+            style.text_styles.insert(
+                TextStyle::Name("LargeHeading".into()),
+                FontId::new(heading_size + 12.0, FontFamily::Proportional),
+            );
+        });
 
         let mut bind = Bind::new(true);
         bind.request(Self::init_heos());

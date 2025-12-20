@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 async-trait = { workspace = true }
+bitflags = "2.10"
 eframe = "0.33.0"
 egui = "0.33.0"
 egui-async = "0.2.1"
@@ -23,3 +24,4 @@ strum = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = { workspace = true }

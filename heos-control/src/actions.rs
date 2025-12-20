@@ -1,11 +1,14 @@
 use egui_async::bind::MaybeSend;
 use egui_async::Bind;
+use heos::command::browse::{AddToQueue, PlayInputSource, PlayStation};
 use heos::command::group::SetGroup;
 use heos::command::player::MoveQueue;
 use heos::command::{CommandError, CommandErrorCode};
 use heos::data::group::GroupRole;
-use heos::data::player::{PlayState, PlayerId, RepeatMode, ShuffleMode};
+use heos::data::media::{HeosService, MediaContainerBase, MediaItem, MediaItemBase};
+use heos::data::player::{AddToQueueType, PlayState, PlayerId, RepeatMode, ShuffleMode};
 use heos::data::queue::QueueId;
+use heos::data::source::SourceId;
 use heos::state::playable::{Playable, PlayableId, PlayableInfo};
 use heos::{HeosConnection, Stateful};
 use std::iter;
@@ -189,6 +192,127 @@ impl Actions {
                 player_id,
                 src_queue_ids: vec![from],
                 dst_queue_id: to,
+            }).await
+        });
+    }
+
+    pub fn play_station(
+        &mut self,
+        playable_id: PlayableId,
+        source_id: SourceId,
+        parent_id: Option<String>,
+        item: MediaItem,
+    ) {
+        debug!(
+            ?playable_id,
+            ?source_id,
+            ?parent_id,
+            ?item,
+            "Playing station",
+        );
+        let container_id = match item.try_as_media_container_ref() {
+            Some(container) => Some(container.container_id().to_string()),
+            None => parent_id,
+        };
+        let media_id = match item.media_id() {
+            Some(mid) => mid.to_string(),
+            None => {
+                warn!(?item, "Tried to play station with no 'media_id'");
+                return
+            }
+        };
+        let heos = self.heos.clone();
+        self.add_bind(async move {
+            let playable = Self::try_playable(&heos, playable_id).await?;
+            let player_id = match playable.info() {
+                PlayableInfo::Group(group) => group.leader().player_id,
+                PlayableInfo::Player(player) => player.player_id,
+            };
+            heos.command(PlayStation {
+                player_id,
+                source_id,
+                container_id,
+                media_id,
+                name: item.name().to_string(),
+            }).await
+        });
+    }
+
+    pub fn play_input_source(
+        &mut self,
+        playable_id: PlayableId,
+        source_id: SourceId,
+        item: MediaItem,
+    ) {
+        debug!(
+            ?playable_id,
+            ?source_id,
+            ?item,
+            "Playing input source",
+        );
+        let heos_service = match HeosService::try_from(item) {
+            Ok(hs) => hs,
+            Err(error) => {
+                warn!(?error, "Tried to play input source with mismatched MediaItem type");
+                return
+            }
+        };
+        let heos = self.heos.clone();
+        self.add_bind(async move {
+            let playable = Self::try_playable(&heos, playable_id).await?;
+            let player_id = match playable.info() {
+                PlayableInfo::Group(group) => group.leader().player_id,
+                PlayableInfo::Player(player) => player.player_id,
+            };
+
+            let src_player_id = if player_id == heos_service.src_player_id {
+                None
+            } else {
+                Some(heos_service.src_player_id)
+            };
+
+            heos.command(PlayInputSource {
+                player_id,
+                src_player_id,
+                input: heos_service.name,
+            }).await
+        });
+    }
+
+    pub fn add_to_queue(
+        &mut self,
+        playable_id: PlayableId,
+        source_id: SourceId,
+        parent_id: Option<String>,
+        item: MediaItem,
+        add_to_queue_type: AddToQueueType,
+    ) {
+        debug!(
+            ?playable_id,
+            ?source_id,
+            ?parent_id,
+            ?item,
+            ?add_to_queue_type,
+            "Adding item to queue",
+        );
+        let container_id = match item.try_as_media_container_ref() {
+            Some(container) => Some(container.container_id().to_string()),
+            None => parent_id,
+        };
+        let media_id = item.media_id().map(str::to_string);
+        let heos = self.heos.clone();
+        self.add_bind(async move {
+            let playable = Self::try_playable(&heos, playable_id).await?;
+            let player_id = match playable.info() {
+                PlayableInfo::Group(group) => group.leader().player_id,
+                PlayableInfo::Player(player) => player.player_id,
+            };
+            heos.command(AddToQueue {
+                player_id,
+                source_id,
+                container_id,
+                media_id,
+                add_to_queue_type,
             }).await
         });
     }

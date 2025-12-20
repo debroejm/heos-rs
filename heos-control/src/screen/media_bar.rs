@@ -14,7 +14,7 @@ use tracing::warn;
 use crate::actions::Actions;
 use crate::assets;
 use crate::updater::Updater;
-use crate::widgets::MediaDisplay;
+use crate::widgets::media::MediaDisplay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlButton {

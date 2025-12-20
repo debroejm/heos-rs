@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use crate::actions::Actions;
 use crate::updater::Updater;
-use crate::widgets::MediaDisplay;
+use crate::widgets::media::MediaDisplay;
 
 pub struct QueuedTrack<'a> {
     track: &'a QueuedTrackInfo,

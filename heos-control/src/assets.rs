@@ -13,11 +13,14 @@ macro_rules! asset {
 
 pub mod icons {
     asset!(devices, "icons/devices.png");
-    asset!(queue, "icons/queue.png");
+    asset!(music, "icons/music.png");
     asset!(next, "icons/next.png");
     asset!(pause, "icons/pause.png");
     asset!(play, "icons/play.png");
+    asset!(play_small, "icons/play_small.png");
+    asset!(plus, "icons/plus.png");
     asset!(prev, "icons/prev.png");
+    asset!(queue, "icons/queue.png");
     asset!(repeat, "icons/repeat.png");
     asset!(repeat_once, "icons/repeat-once.png");
     asset!(shuffle, "icons/shuffle.png");

@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use crate::actions::Actions;
 use crate::updater::Updater;
-use crate::widgets::MediaDisplay;
+use crate::widgets::media::MediaDisplay;
 
 pub struct SubDevice<'a> {
     player: &'a GroupPlayer,
