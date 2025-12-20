@@ -1,19 +1,12 @@
 use egui::style::HandleShape;
-use egui::{Align, Button, Color32, Context, Direction, Frame, Label, Layout, RichText, Slider, Stroke, Ui, UiBuilder};
-use egui_async::Bind;
-use heos::data::event::Event;
+use egui::{Align, Button, Color32, Context, Direction, Frame, Label, Layout, Slider, Stroke, Ui, UiBuilder};
 use heos::data::media::MediaItem;
 use heos::data::player::{PlayState, RepeatMode, ShuffleMode};
 use heos::data::queue::NowPlayingInfo;
-use heos::state::playable::{PlayableId, PlayableSnapshot};
-use heos::{HeosConnection, Stateful};
-use parking_lot::Mutex;
-use std::sync::Arc;
-use tracing::warn;
+use heos::state::playable::PlayableSnapshot;
 
 use crate::actions::Actions;
 use crate::assets;
-use crate::updater::Updater;
 use crate::widgets::media::MediaDisplay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,29 +18,15 @@ pub enum ControlButton {
     Repeat,
 }
 
-struct ActiveData {
-    snapshot: PlayableSnapshot,
+struct ActiveMediaBar<'a> {
+    snapshot: &'a PlayableSnapshot,
 }
 
-impl ActiveData {
-    async fn new(
-        heos: Arc<HeosConnection<Stateful>>,
-        playable_id: PlayableId,
-    ) -> Result<Self, ()> {
-        let snapshot = {
-            let playable = match heos.playable(playable_id).await {
-                Some(playable) => playable,
-                None => {
-                    warn!(?playable_id, "No playable found for ID");
-                    return Err(())
-                }
-            };
-            playable.snapshot().await
-        };
-
-        Ok(Self {
+impl<'a> ActiveMediaBar<'a> {
+    fn new(snapshot: &'a PlayableSnapshot) -> Self {
+        Self {
             snapshot,
-        })
+        }
     }
 
     fn song_info(&self, ui: &mut Ui) {
@@ -235,20 +214,11 @@ impl ActiveData {
     }
 }
 
-enum State {
-    Inactive,
-    Active {
-        playable_id: PlayableId,
-        data: Arc<Mutex<Bind<ActiveData, ()>>>,
-    },
+pub struct MediaBar<'a> {
+    snapshot: Option<&'a PlayableSnapshot>,
 }
 
-pub struct MediaBar {
-    heos: Arc<HeosConnection<Stateful>>,
-    state: State,
-}
-
-impl MediaBar {
+impl<'a> MediaBar<'a> {
     // Adjust these as needed
     const MIN_CORNER_WIDTH: f32 = 200.0;
     const MAX_CORNER_WIDTH: f32 = 300.0;
@@ -276,88 +246,30 @@ impl MediaBar {
         Self::CONTROLS_BUTTONS_SIZE.y + Self::SONG_PROGRESS_HEIGHT,
     );
 
-    pub fn new(heos: Arc<HeosConnection<Stateful>>) -> Self {
+    pub fn new(snapshot: Option<&'a PlayableSnapshot>) -> Self {
         Self {
-            heos,
-            state: State::Inactive,
+            snapshot,
         }
     }
 
-    pub fn set_active(&mut self, updater: &Updater, playable_id: PlayableId) {
-        let data = {
-            let heos = self.heos.clone();
-            let mut data_bind = Bind::new(false);
-            data_bind.request(async move { ActiveData::new(heos, playable_id).await });
-            Arc::new(Mutex::new(data_bind))
-        };
-
-        let heos = self.heos.clone();
-        updater.register(
-            &data,
-            move |event| async move {
-                match event {
-                    Event::PlayersChanged |
-                    Event::GroupsChanged |
-                    Event::PlayerStateChanged(_) |
-                    Event::PlayerNowPlayingChanged(_) |
-                    Event::PlayerNowPlayingProgress(_) |
-                    Event::PlayerPlaybackError(_) |
-                    Event::PlayerQueueChanged(_) |
-                    Event::PlayerVolumeChanged(_) |
-                    Event::PlayerRepeatModeChanged(_) |
-                    Event::PlayerShuffleModeChanged(_) |
-                    Event::GroupVolumeChanged(_) => true,
-                    _ => false,
-                }
-            },
-            move || ActiveData::new(heos.clone(), playable_id),
-        );
-
-        self.state = State::Active {
-            playable_id,
-            data,
-        }
-    }
-
-    fn show(&mut self, ctx: &Context, ui: &mut Ui, actions: &mut Actions) {
-        match &mut self.state {
-            State::Inactive => {
-                ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
-                    ui.heading("Select a Device");
-                });
-            },
-            State::Active { data, .. } => {
-                if let Some(result) = data.lock().read_mut() {
-                    if let Ok(data) = result {
-                        data.show(ctx, ui, actions);
-                    } else {
-                        ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
-                            ui.heading(RichText::new("ERROR").color(Color32::RED));
-                        });
-                    }
-                } else {
-                    ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
-                        ui.spinner();
-                    });
-                }
-            }
-        }
-    }
-
-    pub fn update(&mut self, ctx: &Context, actions: &mut Actions) {
-        egui::TopBottomPanel::bottom("media_bar")
+    pub fn show(self, ctx: &Context, actions: &mut Actions) {
+        let panel = egui::TopBottomPanel::bottom("media_bar")
             .resizable(false)
             .frame(Frame::side_top_panel(&ctx.style())
                 .fill(ctx.style().visuals.panel_fill.gamma_multiply(1.2)))
             .show_separator_line(false)
-            .exact_height(Self::MIN_SIZE.y)
-            .show(ctx, |ui| self.show(ctx, ui, actions));
-    }
-    
-    pub fn playable_id(&self) -> Option<PlayableId> {
-        match &self.state {
-            State::Inactive => None,
-            State::Active { playable_id, .. } => Some(*playable_id),
-        }
+            .exact_height(Self::MIN_SIZE.y);
+        panel.show(ctx, |ui| {
+            match self.snapshot {
+                None => {
+                    ui.with_layout(Layout::centered_and_justified(Direction::TopDown), |ui| {
+                        ui.heading("Select a Device");
+                    });
+                },
+                Some(snapshot) => {
+                    ActiveMediaBar::new(snapshot).show(ctx, ui, actions);
+                }
+            }
+        });
     }
 }

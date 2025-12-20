@@ -1,6 +1,11 @@
 use egui::{Button, Color32, Context, Image, Margin, Response, Rgba, Stroke, Ui, Widget};
+use egui_async::Bind;
 use emath::Vec2;
+use heos::data::event::Event;
+use heos::state::playable::{PlayableId, PlayableSnapshot};
 use heos::{HeosConnection, Stateful};
+use parking_lot::{Mutex, MutexGuard};
+use std::convert::Infallible;
 use std::sync::Arc;
 use strum::{EnumDiscriminants, IntoDiscriminant};
 use tracing::warn;
@@ -12,6 +17,89 @@ use crate::screen::media_bar::MediaBar;
 use crate::screen::music::{MusicScreen, MusicScreenStack};
 use crate::screen::queue::QueueScreen;
 use crate::updater::Updater;
+
+pub struct ActivePlayable {
+    heos: Arc<HeosConnection<Stateful>>,
+    target_id: Arc<Mutex<Option<PlayableId>>>,
+    bind: Arc<Mutex<Bind<Option<PlayableSnapshot>, Infallible>>>,
+}
+
+impl ActivePlayable {
+    async fn refresh_playable(
+        heos: Arc<HeosConnection<Stateful>>,
+        target_id: Arc<Mutex<Option<PlayableId>>>,
+    ) -> Result<Option<PlayableSnapshot>, Infallible> {
+        let target_id = target_id.lock().clone();
+        if let Some(target_id) = target_id {
+            if let Some(playable) = heos.playable(target_id).await {
+                return Ok(Some(playable.snapshot().await))
+            }
+        }
+        Ok(None)
+    }
+
+    fn new(heos: Arc<HeosConnection<Stateful>>, updater: &Updater) -> Self {
+        let mut bind = Bind::new(true);
+        bind.fill(Ok(None));
+        let active_playable = Self {
+            heos: heos.clone(),
+            target_id: Arc::new(Mutex::new(None)),
+            bind: Arc::new(Mutex::new(bind)),
+        };
+
+        {
+            let target_id = active_playable.target_id.clone();
+            updater.register(
+                &active_playable.bind,
+                move |event| async move {
+                    match event {
+                        Event::PlayersChanged |
+                        Event::GroupsChanged |
+                        Event::PlayerStateChanged(_) |
+                        Event::PlayerNowPlayingChanged(_) |
+                        Event::PlayerNowPlayingProgress(_) |
+                        Event::PlayerPlaybackError(_) |
+                        Event::PlayerQueueChanged(_) |
+                        Event::PlayerVolumeChanged(_) |
+                        Event::PlayerRepeatModeChanged(_) |
+                        Event::PlayerShuffleModeChanged(_) |
+                        Event::GroupVolumeChanged(_) => true,
+                        _ => false,
+                    }
+                },
+                move || Self::refresh_playable(heos.clone(), target_id.clone()),
+            );
+        }
+
+        active_playable
+    }
+
+    pub fn set_target_id(&self, playable_id: PlayableId) {
+        *self.target_id.lock() = Some(playable_id);
+        self.bind.lock().request(Self::refresh_playable(self.heos.clone(), self.target_id.clone()));
+    }
+
+    pub fn lock(&self) -> ActivePlayableGuard<'_> {
+        ActivePlayableGuard {
+            inner: self.bind.lock(),
+        }
+    }
+}
+
+pub struct ActivePlayableGuard<'a> {
+    inner: MutexGuard<'a, Bind<Option<PlayableSnapshot>, Infallible>>,
+}
+
+impl<'a> ActivePlayableGuard<'a> {
+    pub fn read(&mut self) -> Option<&PlayableSnapshot> {
+        match self.inner.read() {
+            Some(result) => {
+                result.as_ref().unwrap().as_ref()
+            },
+            None => None,
+        }
+    }
+}
 
 #[derive(EnumDiscriminants)]
 #[strum_discriminants(name(ScreenType))]
@@ -82,20 +170,20 @@ impl Widget for SidePanelButton {
 
 pub struct Loaded {
     heos: Arc<HeosConnection<Stateful>>,
-    media_bar: MediaBar,
+    active_playable: ActivePlayable,
     screen: Screen,
     music_screen_stack: Option<MusicScreenStack>,
 }
 
 impl Loaded {
     pub fn new(heos: Arc<HeosConnection<Stateful>>, updater: &Updater) -> Self {
-        let media_bar = MediaBar::new(heos.clone());
+        let active_playable = ActivePlayable::new(heos.clone(), updater);
         let devices = Devices::new(heos.clone(), updater);
         let screen = Screen::Devices(devices);
 
         Self {
             heos,
-            media_bar,
+            active_playable,
             screen,
             music_screen_stack: None,
         }
@@ -116,11 +204,11 @@ impl Loaded {
         self.screen = match screen_type {
             ScreenType::Devices => Screen::Devices(Devices::new(self.heos.clone(), updater)),
             ScreenType::Music => {
-                if let Some(playable_id) = self.media_bar.playable_id() {
+                if let Some(playable) = self.active_playable.lock().read() {
                     Screen::Music(MusicScreen::new(
                         self.heos.clone(),
                         self.music_screen_stack.take(),
-                        playable_id,
+                        playable.id,
                     ))
                 } else {
                     warn!("Tried to set screen to 'Music' without having a playable ID selected");
@@ -128,8 +216,8 @@ impl Loaded {
                 }
             },
             ScreenType::Queue => {
-                if let Some(playable_id) = self.media_bar.playable_id() {
-                    Screen::Queue(QueueScreen::new(self.heos.clone(), updater, playable_id))
+                if let Some(playable) = self.active_playable.lock().read() {
+                    Screen::Queue(QueueScreen::new(self.heos.clone(), updater, playable.id))
                 } else {
                     warn!("Tried to set screen to 'Queue' without having a playable ID selected");
                     Screen::Pending
@@ -167,27 +255,36 @@ impl Loaded {
                         self.set_screen(ScreenType::Devices, updater);
                     }
 
-                    let playable_id = self.media_bar.playable_id();
+                    let enabled = self.active_playable.lock().read().is_some();
 
                     let music_button = SidePanelButton::new(ScreenType::Music)
                         .selected(&self.screen)
-                        .enabled(playable_id.is_some());
+                        .enabled(enabled);
                     if ui.add(music_button).clicked() {
                         self.set_screen(ScreenType::Music, updater);
                     }
 
                     let queue_button = SidePanelButton::new(ScreenType::Queue)
                         .selected(&self.screen)
-                        .enabled(playable_id.is_some());
+                        .enabled(enabled);
                     if ui.add(queue_button).clicked() {
                         self.set_screen(ScreenType::Queue, updater);
+                    }
+
+                    if !enabled {
+                        // Kick the screen back to devices if the selected playable is no longer valid
+                        match self.screen.discriminant() {
+                            ScreenType::Music | ScreenType::Queue =>
+                                self.set_screen(ScreenType::Devices, updater),
+                            _ => {},
+                        }
                     }
                 });
             });
     }
 
     pub fn update(&mut self, ctx: &Context, actions: &mut Actions, updater: &Updater) {
-        self.media_bar.update(ctx, actions);
+        MediaBar::new(self.active_playable.lock().read()).show(ctx, actions);
         self.side_panel(ctx, updater);
 
         match &mut self.screen {
@@ -195,7 +292,7 @@ impl Loaded {
                 let selected = devices.update(ctx, actions);
 
                 if let Some(selected) = selected {
-                    self.media_bar.set_active(updater, selected);
+                    self.active_playable.set_target_id(selected);
                 }
             },
             Screen::Music(music) => {
