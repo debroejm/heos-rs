@@ -104,12 +104,12 @@ impl<'a> ActiveMediaBar<'a> {
             .handle_shape(HandleShape::Rect { aspect_ratio: 0.0 });
         ui.add_sized(
             emath::vec2(text_width, ui.available_height()),
-            Label::new(format!("{}:{}", elapsed.floor() as u64 / 60, elapsed.floor() as u64 % 60)).truncate(),
+            Label::new(format!("{}:{:02}", elapsed.floor() as u64 / 60, elapsed.floor() as u64 % 60)).truncate(),
         );
         ui.add_enabled(duration > 0.0, slider);
         ui.add_sized(
             emath::vec2(text_width, ui.available_height()),
-            Label::new(format!("{}:{}", duration.floor() as u64 / 60, duration.floor() as u64 % 60)).truncate(),
+            Label::new(format!("{}:{:02}", duration.floor() as u64 / 60, duration.floor() as u64 % 60)).truncate(),
         );
 
         if self.snapshot.play_state == PlayState::Play {
