@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 use eframe::epaint::FontFamily;
 use eframe::{CreationContext, Frame};
 use egui::{Context, FontId, RichText, TextStyle, ViewportCommand};
