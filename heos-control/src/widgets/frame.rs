@@ -1,4 +1,4 @@
-use egui::{Color32, Frame, InnerResponse, Margin, Sense, Ui, UiBuilder};
+use egui::{Color32, Frame, InnerResponse, Layout, Margin, Sense, Ui, UiBuilder};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileFrameShape {
@@ -33,7 +33,9 @@ impl TileFrameShape {
 pub struct TileFrame {
     shape: Option<TileFrameShape>,
     inner_margin: Option<Margin>,
+    layout: Option<Layout>,
     sense: Option<Sense>,
+    selected: bool,
     bg_color: Option<Color32>,
     hovered_color: Option<Color32>,
 }
@@ -57,8 +59,18 @@ impl TileFrame {
         self.inner_margin.unwrap_or_else(|| self.get_shape().inner_margin())
     }
 
+    pub fn layout(mut self, layout: Layout) -> Self {
+        self.layout = Some(layout);
+        self
+    }
+
     pub fn sense(mut self, sense: Sense) -> Self {
         self.sense = Some(sense);
+        self
+    }
+
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
         self
     }
 
@@ -87,13 +99,16 @@ impl TileFrame {
 
         let mut ui_builder = UiBuilder::new();
         ui_builder.sense = self.sense;
+        ui_builder.layout = self.layout;
 
         let mut inner_response = frame.content_ui.scope_builder(ui_builder, add_contents);
 
         let response = frame.allocate_space(ui);
-        if sense_hover && response.hovered() {
+        if self.selected {
+            frame.frame.fill = ui.style().visuals.selection.bg_fill;
+        } else if sense_hover && response.hovered() {
             frame.frame.fill = self.hovered_color
-                .unwrap_or_else(|| ui.style().visuals.selection.bg_fill);
+                .unwrap_or_else(|| ui.style().visuals.faint_bg_color.gamma_multiply(6.0));
         } else {
             frame.frame.fill = self.bg_color
                 .unwrap_or_else(|| ui.style().visuals.faint_bg_color.gamma_multiply(2.0));

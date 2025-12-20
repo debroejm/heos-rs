@@ -1,11 +1,11 @@
-use egui::{Context, Frame, Id, Layout, Response, ScrollArea, Sense, Ui, UiBuilder, Widget};
+use egui::{Context, Frame, Id, Layout, Response, ScrollArea, Sense, Ui, Widget};
 use egui_async::Bind;
 use egui_dnd::{Dnd, DragDropItem};
 use emath::Align;
 use heos::data::event::Event;
 use heos::data::media::MediaItem;
-use heos::data::queue::{QueueId, QueuedTrackInfo};
-use heos::state::playable::PlayableId;
+use heos::data::queue::{NowPlayingInfo, QueueId, QueuedTrackInfo};
+use heos::state::playable::{PlayableId, PlayableInfo, PlayableSnapshot};
 use heos::{HeosConnection, Stateful};
 use parking_lot::Mutex;
 use std::convert::Infallible;
@@ -13,11 +13,13 @@ use std::sync::Arc;
 
 use crate::actions::Actions;
 use crate::updater::Updater;
+use crate::widgets::frame::TileFrame;
 use crate::widgets::media::MediaDisplay;
 
 pub struct QueuedTrack<'a> {
     track: &'a QueuedTrackInfo,
     striped: bool,
+    selected: bool,
 }
 
 impl<'a> QueuedTrack<'a> {
@@ -27,6 +29,7 @@ impl<'a> QueuedTrack<'a> {
         Self {
             track,
             striped: false,
+            selected: false,
         }
     }
 
@@ -34,39 +37,31 @@ impl<'a> QueuedTrack<'a> {
         self.striped = striped;
         self
     }
+
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
 }
 
 impl<'a> Widget for QueuedTrack<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let mut frame = Frame::NONE
-            .inner_margin(8.0)
-            .corner_radius(6.0)
-            .begin(ui);
-
-        let inner = frame.content_ui.scope_builder(
-            UiBuilder::new()
-                .layout(Layout::left_to_right(Align::Min))
-                .sense(Sense::hover()),
-            |ui| {
-                ui.set_height(Self::HEIGHT);
-                ui.set_width(ui.available_width());
-
-                let item = MediaItem::from(self.track.clone());
-                ui.add(MediaDisplay::new(&item));
-            }
-        );
-
-        let response = frame.allocate_space(ui);
-        if response.hovered() {
-            frame.frame.fill = ui.style().visuals.selection.bg_fill;
-        } else {
-            frame.frame.fill = ui.style().visuals.faint_bg_color.gamma_multiply(match self.striped {
+        let frame = TileFrame::default()
+            .layout(Layout::left_to_right(Align::Min))
+            .sense(Sense::hover())
+            .bg_color(ui.style().visuals.faint_bg_color.gamma_multiply(match self.striped {
                 true => 4.0,
                 false => 2.0,
-            });
-        }
-        frame.paint(ui);
-        response | inner.response
+            }))
+            .selected(self.selected);
+
+        frame.show(ui, |ui| {
+            ui.set_height(Self::HEIGHT);
+            ui.set_width(ui.available_width());
+
+            let item = MediaItem::from(self.track.clone());
+            ui.add(MediaDisplay::new(&item));
+        }).response
     }
 }
 
@@ -77,7 +72,6 @@ impl<'a> DragDropItem for QueuedTrack<'a> {
 }
 
 pub struct QueueScreen {
-    playable_id: PlayableId,
     queue: Arc<Mutex<Bind<Vec<QueuedTrackInfo>, Infallible>>>,
 }
 
@@ -93,31 +87,26 @@ impl QueueScreen {
         }
     }
 
-    pub fn new(heos: Arc<HeosConnection<Stateful>>, updater: &Updater, playable_id: PlayableId) -> Self {
+    pub fn new(heos: Arc<HeosConnection<Stateful>>, updater: &Updater, playable: &PlayableSnapshot) -> Self {
         let queue = {
             let heos = heos.clone();
+            let playable_id = playable.id;
             let mut queue_bind = Bind::new(false);
             queue_bind.request(async move { Self::query_queue(heos, playable_id).await });
             Arc::new(Mutex::new(queue_bind))
         };
 
         {
-            let heos_event_check = heos.clone();
             let heos_update_fn = heos.clone();
+            let playable_id = playable.id;
+            let player_id = match &playable.info {
+                PlayableInfo::Player(player) => player.player_id,
+                PlayableInfo::Group(group) => group.leader().player_id,
+            };
             updater.register(
                 &queue,
                 move |event| {
-                    let heos = heos_event_check.clone();
                     async move {
-                        let player_id = match playable_id {
-                            PlayableId::Player(player_id) => player_id,
-                            PlayableId::Group(group_id) => {
-                                match heos.group(&group_id).await {
-                                    Some(group) => group.leader_id(),
-                                    None => return false,
-                                }
-                            }
-                        };
                         match event {
                             Event::PlayerQueueChanged(queue_changed) => {
                                 queue_changed.player_id == player_id
@@ -131,17 +120,27 @@ impl QueueScreen {
         }
 
         Self {
-            playable_id,
             queue,
         }
     }
 
-    fn show(&mut self, ui: &mut Ui, actions: &mut Actions) {
+    fn show(&mut self, ui: &mut Ui, actions: &mut Actions, playable: &PlayableSnapshot) {
+        let now_playing_queue_id = match &playable.now_playing.info {
+            NowPlayingInfo::Song { info, .. } => Some(info.queue_id),
+            NowPlayingInfo::Station { .. } => None,
+        };
         if let Some(queue) = self.queue.lock().read() {
             let queue = queue.as_ref().unwrap();
             ScrollArea::vertical().show(ui, |ui| {
                 let tracks = queue.iter().enumerate()
-                    .map(|(idx, track)| QueuedTrack::new(track).striped(idx % 2 != 0));
+                    .map(|(idx, track)| {
+                        QueuedTrack::new(track)
+                            .striped(idx % 2 != 0)
+                            .selected(match now_playing_queue_id {
+                                Some(id) => track.queue_id == id,
+                                None => false,
+                            })
+                    });
                 let response = Dnd::new(ui, "queue_dnd").show(tracks, |ui, track, handle, _| {
                     handle.ui(ui, |ui| {
                         ui.add(track);
@@ -165,7 +164,7 @@ impl QueueScreen {
                         // a new ID that represents beyond the end of the current queue
                         QueueId::from(queue.len() as u64)
                     };
-                    actions.move_queue(self.playable_id, from, to);
+                    actions.move_queue(playable.id, from, to);
                 }
             });
         } else {
@@ -173,10 +172,10 @@ impl QueueScreen {
         }
     }
 
-    pub fn update(&mut self, ctx: &Context, actions: &mut Actions) {
+    pub fn update(&mut self, ctx: &Context, actions: &mut Actions, playable: &PlayableSnapshot) {
         egui::CentralPanel::default()
             .frame(Frame::central_panel(&ctx.style())
                 .fill(ctx.style().visuals.extreme_bg_color))
-            .show(ctx, |ui| self.show(ui, actions));
+            .show(ctx, |ui| self.show(ui, actions, playable));
     }
 }

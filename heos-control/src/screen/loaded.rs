@@ -2,6 +2,7 @@ use egui::{Button, Color32, Context, Image, Margin, Response, Rgba, Stroke, Ui, 
 use egui_async::Bind;
 use emath::Vec2;
 use heos::data::event::Event;
+use heos::data::queue::NowPlayingInfo;
 use heos::state::playable::{PlayableId, PlayableSnapshot};
 use heos::{HeosConnection, Stateful};
 use parking_lot::{Mutex, MutexGuard};
@@ -217,7 +218,7 @@ impl Loaded {
             },
             ScreenType::Queue => {
                 if let Some(playable) = self.active_playable.lock().read() {
-                    Screen::Queue(QueueScreen::new(self.heos.clone(), updater, playable.id))
+                    Screen::Queue(QueueScreen::new(self.heos.clone(), updater, playable))
                 } else {
                     warn!("Tried to set screen to 'Queue' without having a playable ID selected");
                     Screen::Pending
@@ -255,29 +256,41 @@ impl Loaded {
                         self.set_screen(ScreenType::Devices, updater);
                     }
 
-                    let enabled = self.active_playable.lock().read().is_some();
+                    let (music_enabled, queue_enabled) = match self.active_playable.lock().read() {
+                        Some(playable) => match &playable.now_playing.info {
+                            NowPlayingInfo::Station { .. } => (true, false),
+                            NowPlayingInfo::Song { .. } => (true, true),
+                        },
+                        None => (false, false),
+                    };
 
                     let music_button = SidePanelButton::new(ScreenType::Music)
                         .selected(&self.screen)
-                        .enabled(enabled);
+                        .enabled(music_enabled);
                     if ui.add(music_button).clicked() {
                         self.set_screen(ScreenType::Music, updater);
                     }
 
                     let queue_button = SidePanelButton::new(ScreenType::Queue)
                         .selected(&self.screen)
-                        .enabled(enabled);
+                        .enabled(queue_enabled);
                     if ui.add(queue_button).clicked() {
                         self.set_screen(ScreenType::Queue, updater);
                     }
 
-                    if !enabled {
-                        // Kick the screen back to devices if the selected playable is no longer valid
-                        match self.screen.discriminant() {
-                            ScreenType::Music | ScreenType::Queue =>
-                                self.set_screen(ScreenType::Devices, updater),
-                            _ => {},
-                        }
+                    // Kick the screen back to devices if the current screen is no longer valid
+                    match self.screen.discriminant() {
+                        ScreenType::Music => {
+                            if !music_enabled {
+                                self.set_screen(ScreenType::Devices, updater);
+                            }
+                        },
+                        ScreenType::Queue => {
+                            if !queue_enabled {
+                                self.set_screen(ScreenType::Devices, updater);
+                            }
+                        },
+                        _ => {}
                     }
                 });
             });
@@ -299,7 +312,19 @@ impl Loaded {
                 music.update(ctx, actions);
             },
             Screen::Queue(queue) => {
-                queue.update(ctx, actions);
+                let mut reset = false;
+                if let Some(playable) = self.active_playable.lock().read() {
+                    match &playable.now_playing.info {
+                        NowPlayingInfo::Song { .. } => queue.update(ctx, actions, playable),
+                        NowPlayingInfo::Station { .. } => reset = true,
+                    }
+                } else {
+                    reset = true;
+                }
+                if reset {
+                    self.set_screen(ScreenType::Devices, updater);
+                    ctx.request_discard("Resetting to Devices screen due to Queue screen being no longer valid");
+                }
             },
             Screen::Pending => {
                 egui::CentralPanel::default().show(ctx, |ui| {
