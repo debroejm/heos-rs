@@ -185,6 +185,9 @@ impl ChannelState {
                 },
             };
 
+            let mut response = response;
+            response.percent_decode();
+
             if let Some(current_response) = response_cache.current.take() {
                 let _ = current_response.send(Some(response));
                 return

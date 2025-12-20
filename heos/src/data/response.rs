@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
+use std::collections::VecDeque;
 
 use crate::command::CommandError;
 
@@ -16,6 +17,79 @@ fn deserialize_result<'de, D: Deserializer<'de>>(d: D) -> Result<Option<bool>, D
             }
         },
         None => Ok(None),
+    }
+}
+
+enum RecursiveJsonStringIterInner<'a> {
+    Exhausted,
+    //String(&'a mut String),
+    Single(&'a mut Value),
+    Many(VecDeque<RecursiveJsonStringIter<'a>>),
+}
+
+struct RecursiveJsonStringIter<'a> {
+    inner: RecursiveJsonStringIterInner<'a>,
+}
+
+impl<'a> RecursiveJsonStringIter<'a> {
+    fn new(value: &'a mut Value) -> Self {
+        Self {
+            inner: RecursiveJsonStringIterInner::Single(value),
+        }
+    }
+}
+
+fn find_first_in_many<'a>(many: &mut VecDeque<RecursiveJsonStringIter<'a>>) -> Option<&'a mut String> {
+    let mut output = None;
+    while output.is_none() && !many.is_empty() {
+        output = many.front_mut().unwrap().next();
+        if output.is_none() {
+            many.pop_front();
+        }
+    }
+    output
+}
+
+impl<'a> Iterator for RecursiveJsonStringIter<'a> {
+    type Item = &'a mut String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut inner = RecursiveJsonStringIterInner::Exhausted;
+        std::mem::swap(&mut inner, &mut self.inner);
+
+        let mut handle_many = |mut many: VecDeque<RecursiveJsonStringIter<'a>>| {
+            let output = find_first_in_many(&mut many);
+            if !many.is_empty() {
+                self.inner = RecursiveJsonStringIterInner::Many(many);
+            }
+            output
+        };
+
+        match inner {
+            RecursiveJsonStringIterInner::Exhausted => None,
+            RecursiveJsonStringIterInner::Single(value) => {
+                match value {
+                    Value::Array(values) => {
+                        let many = values.iter_mut()
+                            .map(|value| Self::new(value))
+                            .collect::<VecDeque<_>>();
+                        handle_many(many)
+                    },
+                    Value::Object(values) => {
+                        let many = values.values_mut()
+                            .map(|value| Self::new(value))
+                            .collect::<VecDeque<_>>();
+                        handle_many(many)
+                    }
+                    Value::String(value) => Some(value),
+                    // The other values don't represent a string, so consider this iter exhausted
+                    _ => None,
+                }
+            },
+            RecursiveJsonStringIterInner::Many(many) => {
+                handle_many(many)
+            }
+        }
     }
 }
 
@@ -96,6 +170,22 @@ impl RawResponse {
             CommandError::MalformedResponse(format!("could not parse 'SEQUENCE': {error}"))
         })?;
         Ok(Some(msg_id))
+    }
+
+    pub fn percent_decode(&mut self) {
+        if let Some(payload) = &mut self.payload {
+            for str_value in RecursiveJsonStringIter::new(payload) {
+                let bytes = urlencoding::decode_binary(str_value.as_bytes());
+                *str_value = String::from_utf8_lossy(&bytes).into_owned();
+            }
+        }
+
+        if let Some(options) = &mut self.options {
+            for str_value in RecursiveJsonStringIter::new(options) {
+                let bytes = urlencoding::decode_binary(str_value.as_bytes());
+                *str_value = String::from_utf8_lossy(&bytes).into_owned();
+            }
+        }
     }
 }
 
