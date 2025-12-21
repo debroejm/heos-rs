@@ -2,7 +2,7 @@ use egui_async::bind::MaybeSend;
 use egui_async::Bind;
 use heos::command::browse::{AddToQueue, PlayInputSource, PlayStation};
 use heos::command::group::SetGroup;
-use heos::command::player::MoveQueue;
+use heos::command::player::{MoveQueue, RemoveFromQueue};
 use heos::command::{CommandError, CommandErrorCode};
 use heos::data::common::Volume;
 use heos::data::group::GroupRole;
@@ -211,6 +211,22 @@ impl Actions {
                 player_id,
                 src_queue_ids: vec![from],
                 dst_queue_id: to,
+            }).await
+        });
+    }
+
+    pub fn remove_from_queue(&mut self, playable_id: PlayableId, queue_id: QueueId) {
+        debug!(?playable_id, ?queue_id, "Removing queued track");
+        let heos = self.heos.clone();
+        self.add_bind(async move {
+            let playable = Self::try_playable(&heos, playable_id).await?;
+            let player_id = match playable.info() {
+                PlayableInfo::Group(group) => group.leader().player_id,
+                PlayableInfo::Player(player) => player.player_id,
+            };
+            heos.command(RemoveFromQueue {
+                player_id,
+                queue_ids: vec![queue_id],
             }).await
         });
     }

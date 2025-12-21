@@ -13,6 +13,7 @@ macro_rules! asset {
 
 pub mod icons {
     asset!(devices, "icons/devices.png");
+    asset!(grab, "icons/grab.png");
     asset!(music, "icons/music.png");
     asset!(next, "icons/next.png");
     asset!(pause, "icons/pause.png");
@@ -24,6 +25,7 @@ pub mod icons {
     asset!(repeat, "icons/repeat.png");
     asset!(repeat_once, "icons/repeat-once.png");
     asset!(shuffle, "icons/shuffle.png");
+    asset!(trash, "icons/trash.png");
     asset!(volume_mute, "icons/volume_mute.png");
     asset!(volume_0, "icons/volume_0.png");
     asset!(volume_1, "icons/volume_1.png");

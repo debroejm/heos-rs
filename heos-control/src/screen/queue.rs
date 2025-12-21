@@ -1,6 +1,6 @@
-use egui::{Context, Frame, Id, Layout, Response, ScrollArea, Sense, Ui, Widget};
+use egui::{Button, Color32, Context, Frame, Id, Layout, Response, ScrollArea, Sense, Sides, Stroke, Ui, Widget};
 use egui_async::Bind;
-use egui_dnd::{Dnd, DragDropItem};
+use egui_dnd::{Dnd, DragDropItem, Handle};
 use emath::Align;
 use heos::data::event::Event;
 use heos::data::media::MediaItem;
@@ -12,12 +12,24 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use crate::actions::Actions;
+use crate::assets;
 use crate::updater::Updater;
 use crate::widgets::frame::TileFrame;
 use crate::widgets::media::MediaDisplay;
 
+struct QueuedTrackDnd<'a>(&'a QueuedTrackInfo);
+
+impl<'a> DragDropItem for QueuedTrackDnd<'a> {
+    fn id(&self) -> Id {
+        Id::new(self.0.queue_id)
+    }
+}
+
 pub struct QueuedTrack<'a> {
+    playable_id: PlayableId,
     track: &'a QueuedTrackInfo,
+    handle: Handle<'a>,
+    actions: &'a mut Actions,
     striped: bool,
     selected: bool,
 }
@@ -25,9 +37,17 @@ pub struct QueuedTrack<'a> {
 impl<'a> QueuedTrack<'a> {
     const HEIGHT: f32 = 60.0;
 
-    pub fn new(track: &'a QueuedTrackInfo) -> Self {
+    pub fn new(
+        playable_id: PlayableId,
+        track: &'a QueuedTrackInfo,
+        handle: Handle<'a>,
+        actions: &'a mut Actions,
+    ) -> Self {
         Self {
+            playable_id,
             track,
+            handle,
+            actions,
             striped: false,
             selected: false,
         }
@@ -59,8 +79,46 @@ impl<'a> Widget for QueuedTrack<'a> {
             ui.set_height(Self::HEIGHT);
             ui.set_width(ui.available_width());
 
-            let item = MediaItem::from(self.track.clone());
-            ui.add(MediaDisplay::new(&item));
+            Sides::new().shrink_left().show(
+                ui,
+                |ui| {
+                    ui.set_height(Self::HEIGHT);
+                    // LEFT
+                    let item = MediaItem::from(self.track.clone());
+                    ui.add(MediaDisplay::new(&item));
+                },
+                |ui| {
+                    // RIGHT
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.set_height(Self::HEIGHT);
+                        ui.add_space(20.0);
+
+                        self.handle.ui(ui, |ui| {
+                            let image = assets::icons::grab::image()
+                                .max_size(emath::Vec2::splat(Self::HEIGHT / 1.5))
+                                .fit_to_exact_size(emath::Vec2::splat(Self::HEIGHT / 1.5))
+                                .tint(ui.visuals().faint_bg_color.gamma_multiply(6.0));
+                            ui.add(image);
+                        });
+
+                        ui.add_space(20.0);
+
+                        ui.scope(|ui| {
+                            let image = assets::icons::trash::image()
+                                .max_size(emath::Vec2::splat(Self::HEIGHT / 3.0))
+                                .fit_to_exact_size(emath::Vec2::splat(Self::HEIGHT / 3.0));
+                            let delete_button = Button::new(image)
+                                .frame(false)
+                                .image_tint_follows_text_color(true);
+                            ui.style_mut().visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, Color32::DARK_RED);
+                            ui.style_mut().visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, Color32::RED);
+                            if ui.add(delete_button).clicked() {
+                                self.actions.remove_from_queue(self.playable_id, self.track.queue_id);
+                            }
+                        });
+                    });
+                },
+            );
         }).response
     }
 }
@@ -132,19 +190,15 @@ impl QueueScreen {
         if let Some(queue) = self.queue.lock().read() {
             let queue = queue.as_ref().unwrap();
             ScrollArea::vertical().show(ui, |ui| {
-                let tracks = queue.iter().enumerate()
-                    .map(|(idx, track)| {
-                        QueuedTrack::new(track)
-                            .striped(idx % 2 != 0)
-                            .selected(match now_playing_queue_id {
-                                Some(id) => track.queue_id == id,
-                                None => false,
-                            })
-                    });
-                let response = Dnd::new(ui, "queue_dnd").show(tracks, |ui, track, handle, _| {
-                    handle.ui(ui, |ui| {
-                        ui.add(track);
-                    });
+                let iter = queue.iter().map(QueuedTrackDnd);
+                let response = Dnd::new(ui, "queue_dnd").show(iter, |ui, track, handle, state| {
+                    let track = QueuedTrack::new(playable.id, track.0, handle, actions)
+                        .striped(state.index % 2 != 0)
+                        .selected(match now_playing_queue_id {
+                            Some(id) => track.0.queue_id == id,
+                            None => false,
+                        });
+                    ui.add(track);
                 });
                 if let Some(update) = response.final_update() {
                     println!("Dragged: {} => {}", update.from, update.to);
