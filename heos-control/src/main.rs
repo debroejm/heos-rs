@@ -2,7 +2,7 @@
 
 use eframe::epaint::FontFamily;
 use eframe::{CreationContext, Frame};
-use egui::{Context, FontId, RichText, TextStyle, ViewportCommand};
+use egui::{Context, FontId, RichText, TextStyle, Theme, ViewportCommand};
 use egui_async::{Bind, EguiAsyncPlugin};
 use heos::data::media::MediaItem;
 use heos::{HeosConnection, Stateful};
@@ -89,6 +89,9 @@ impl HeosControlApp {
                 FontId::new(heading_size + 12.0, FontFamily::Proportional),
             );
         });
+
+        // Light mode isn't properly configured yet
+        ctx.egui_ctx.set_theme(Theme::Dark);
 
         let mut bind = Bind::new(true);
         bind.request(Self::init_heos());
