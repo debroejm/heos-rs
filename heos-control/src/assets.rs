@@ -24,4 +24,9 @@ pub mod icons {
     asset!(repeat, "icons/repeat.png");
     asset!(repeat_once, "icons/repeat-once.png");
     asset!(shuffle, "icons/shuffle.png");
+    asset!(volume_mute, "icons/volume_mute.png");
+    asset!(volume_0, "icons/volume_0.png");
+    asset!(volume_1, "icons/volume_1.png");
+    asset!(volume_2, "icons/volume_2.png");
+    asset!(volume_3, "icons/volume_3.png");
 }

@@ -4,6 +4,7 @@ use heos::command::browse::{AddToQueue, PlayInputSource, PlayStation};
 use heos::command::group::SetGroup;
 use heos::command::player::MoveQueue;
 use heos::command::{CommandError, CommandErrorCode};
+use heos::data::common::Volume;
 use heos::data::group::GroupRole;
 use heos::data::media::{HeosService, MediaContainerBase, MediaItem, MediaItemBase};
 use heos::data::player::{AddToQueueType, PlayState, PlayerId, RepeatMode, ShuffleMode};
@@ -94,6 +95,24 @@ impl Actions {
                     }),
                 ).await,
             }
+        });
+    }
+
+    pub fn toggle_mute(&mut self, playable_id: PlayableId) {
+        debug!(?playable_id, "Toggling mute");
+        let heos = self.heos.clone();
+        self.add_bind(async move {
+            let playable = Self::try_playable(&heos, playable_id).await?;
+            playable.toggle_mute().await
+        });
+    }
+
+    pub fn set_volume(&mut self, playable_id: PlayableId, volume: Volume) {
+        debug!(?playable_id, ?volume, "Setting volume");
+        let heos = self.heos.clone();
+        self.add_bind(async move {
+            let playable = Self::try_playable(&heos, playable_id).await?;
+            playable.set_volume(volume).await
         });
     }
 

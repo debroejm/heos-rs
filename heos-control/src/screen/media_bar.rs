@@ -1,5 +1,6 @@
 use egui::style::HandleShape;
 use egui::{Align, Button, Color32, Context, Direction, Frame, Label, Layout, Slider, Stroke, Ui, UiBuilder};
+use heos::data::common::{MuteState, Volume};
 use heos::data::media::MediaItem;
 use heos::data::player::{PlayState, RepeatMode, ShuffleMode};
 use heos::data::queue::NowPlayingInfo;
@@ -172,6 +173,51 @@ impl<'a> ActiveMediaBar<'a> {
         ));
     }
 
+    fn volume(&mut self, ui: &mut Ui, actions: &mut Actions) {
+        let margin = 30.0;
+        let mut volume = self.snapshot.volume.into();
+
+        ui.add_space(margin);
+
+        let volume_icon = match self.snapshot.mute {
+            MuteState::On => assets::icons::volume_mute::image(),
+            MuteState::Off => if volume < 25 {
+                assets::icons::volume_0::image()
+            } else if volume < 50 {
+                assets::icons::volume_1::image()
+            } else if volume < 75 {
+                assets::icons::volume_2::image()
+            } else {
+                assets::icons::volume_3::image()
+            }
+        };
+        let volume_icon = volume_icon
+            .max_size(emath::Vec2::splat(MediaBar::VOLUME_ICON_SIZE))
+            .fit_to_exact_size(emath::Vec2::splat(MediaBar::VOLUME_ICON_SIZE));
+        let volume_toggle = Button::new(volume_icon)
+            .frame(false)
+            .image_tint_follows_text_color(true);
+        ui.scope(|ui| {
+            if ui.add(volume_toggle).clicked() {
+                actions.toggle_mute(self.snapshot.id);
+            }
+        });
+
+        ui.add_space(10.0);
+
+        ui.spacing_mut().slider_width = MediaBar::VOLUME_BAR_MAX_SIZE
+            .min(ui.available_width() - margin);
+        let slider = Slider::new(&mut volume, Volume::MIN..=Volume::MAX)
+            .show_value(false)
+            .trailing_fill(true)
+            .handle_shape(HandleShape::Circle);
+        if ui.add(slider).drag_stopped() {
+            if let Ok(volume) = Volume::try_from(volume) {
+                actions.set_volume(self.snapshot.id, volume);
+            }
+        }
+    }
+
     fn show(&mut self, ctx: &Context, ui: &mut Ui, actions: &mut Actions) {
         let spacing = ui.spacing().item_spacing;
         let available = ui.available_size();
@@ -210,7 +256,7 @@ impl<'a> ActiveMediaBar<'a> {
                     0.0,
                 ),
                 emath::pos2(
-                    top_left.x + corner_width + controls_width + spacing.x * 2.0,
+                    top_left.x + corner_width * 2.0 + controls_width + spacing.x * 2.0,
                     bottom,
                 ),
             ))
@@ -219,6 +265,7 @@ impl<'a> ActiveMediaBar<'a> {
 
         self.song_info(&mut info);
         self.controls(ctx, &mut controls, actions);
+        self.volume(&mut volume, actions);
 
         ui.advance_cursor_after_rect(emath::Rect::from_min_size(
             top_left,
@@ -235,6 +282,8 @@ impl<'a> MediaBar<'a> {
     // Adjust these as needed
     const MIN_CORNER_WIDTH: f32 = 200.0;
     const MAX_CORNER_WIDTH: f32 = 300.0;
+    const VOLUME_ICON_SIZE: f32 = 20.0;
+    const VOLUME_BAR_MAX_SIZE: f32 = 120.0;
     const PLAY_BUTTON_SIZE: f32 = 40.0;
     const NEXT_PREV_BUTTON_SIZE: f32 = 20.0;
     const SHUFFLE_BUTTON_SIZE: f32 = Self::NEXT_PREV_BUTTON_SIZE;
