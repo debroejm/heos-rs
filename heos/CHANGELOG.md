@@ -1,4 +1,19 @@
-## [0.2.3] - 2025-11-30
+## [0.3.0] - 2025-12-21
+
+### 🚀 Features
+
+- Expand media item types with traits and sub-enums
+- Chain stateful browse/search commands to retrieve all items
+
+### 🐛 Bug Fixes
+
+- Use unordered assertions for set_group doctests
+- Decode percent-encoded response payloads
+
+### 🚜 Refactor
+
+- Standardize media item data structures
+## [heos-v0.2.3] - 2025-11-30
 
 ### 🚀 Features
 
@@ -15,6 +30,10 @@
 ### 🐛 Bug Fixes
 
 - Associate responses with command IDs
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [heos-v0.2.2] - 2025-10-30
 
 ### 📚 Documentation
