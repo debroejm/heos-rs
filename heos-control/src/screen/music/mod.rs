@@ -1,4 +1,5 @@
 mod browse;
+mod search;
 
 use egui::{Context, FontSelection, Label, Layout, Response, RichText, Sense, TextEdit, TextStyle, Ui, Widget};
 use egui_async::Bind;
