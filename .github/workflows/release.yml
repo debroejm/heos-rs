@@ -1,43 +1,58 @@
-name: release
+name: Release
 
 on:
   push:
-    tags:
-      - heos-v[0-9]+.*
-      - heos-control-v[0-9]+.*
+    branches:
+      - master
 
 jobs:
-  create-release:
-    name: Create GitHub Release
+  release:
+    name: Release
     if: github.repository == 'debroejm/heos-rs'
+    environment: release
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Enable OIDC
+      contents: write
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v2
-      - uses: taiki-e/create-gh-release-action@v1
+      - &checkout
+        name: Checkout repository
+        uses: actions/checkout@v6
         with:
-          prefix: heos(-control)?
-          changelog: "$prefix/CHANGELOG.md"
-          title: "$prefix $version"
-          branch: master
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          persist-credentials: false
+      - &install-rust
+        name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - name: Release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  upload-assets:
-    needs: create-release
-    if: startsWith(github.ref, 'refs/tags/heos-control-v')
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-    runs-on: ${{ matrix.os }}
+  release-pr:
+    name: Release PR
+    if: github.repository == 'debroejm/heos-rs'
+    environment: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: taiki-e/upload-rust-binary-action@v1
+      - *checkout
+      - *install-rust
+      - name: Release PR
+        uses: release-plz/action@v0.5
         with:
-          bin: heos-control
-          target: ${{ matrix.target }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
