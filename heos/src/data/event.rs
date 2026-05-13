@@ -19,9 +19,8 @@ use crate::data::response::RawResponse;
 use crate::data::system::AccountStatus;
 
 /// Additional data for when a player's [PlayState] changes.
-// TODO: fix name to be PlayerPlayStateChanged
 #[derive(Deserialize, Debug, Clone, Copy)]
-pub struct PlayerStateChanged {
+pub struct PlayerPlayStateChanged {
     /// ID of the player that changed.
     #[serde(rename = "pid")]
     pub player_id: PlayerId,
@@ -146,7 +145,7 @@ pub enum Event {
     /// A player's play state changed.
     ///
     /// The event contains the new play state.
-    PlayerStateChanged(PlayerStateChanged),
+    PlayerStateChanged(PlayerPlayStateChanged),
 
     /// A player's now playing track changed.
     ///
